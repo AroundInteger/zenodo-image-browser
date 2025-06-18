@@ -3,6 +3,10 @@ import os
 from pathlib import Path
 from src.api.zenodo import ZenodoAPI
 from src.utils.image_utils import is_valid_image_url, get_image_dimensions, is_supported_image_format
+from src.components.metadata_display import display_dataset_metadata, display_file_preview
+from src.data.ingestion import DataIngestionPipeline
+from src.analysis.interactive_tools import InteractiveAnalysisTools
+from src.ai.mcp_server import create_ai_chat_interface
 import requests
 
 # Set page config
@@ -13,8 +17,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize Zenodo API
+# Initialize components
 zenodo_api = ZenodoAPI()
+ingestion_pipeline = DataIngestionPipeline()
+analysis_tools = InteractiveAnalysisTools()
 
 # Custom CSS
 st.markdown("""
@@ -30,6 +36,12 @@ st.markdown("""
         border: 1px solid #ddd;
         border-radius: 5px;
         margin-bottom: 1rem;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 5px;
+        margin: 0.5rem 0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -52,85 +64,146 @@ if page == "Home":
     - Preview images and videos
     - Interactive data visualization
     - AI-powered analysis and benchmarking
+    - Upload and manage your own datasets
     
     ### Getting Started
     1. Use the sidebar to navigate between different sections
-    2. Start by browsing available datasets
+    2. Start by browsing available datasets or upload your own
     3. Select a dataset to view its contents
     4. Use the analysis tools to explore the data
+    5. Ask AI questions about your data
     """)
+    
+    # Quick stats
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Datasets Available", "1000+", "via Zenodo")
+    with col2:
+        st.metric("Analysis Tools", "15+", "Interactive")
+    with col3:
+        st.metric("AI Features", "Active", "MCP Server")
 
 elif page == "Browse Datasets":
     st.title("Browse Datasets")
     
-    # Add a section for direct record access
-    st.subheader("Access Specific Record")
-    record_id = st.text_input("Enter Zenodo Record ID", "7890690")
+    # Tabs for different browse modes
+    tab1, tab2 = st.tabs(["Zenodo Records", "Upload New Data"])
     
-    if st.button("Load Record"):
-        with st.spinner("Loading dataset..."):
-            dataset = zenodo_api.get_dataset(record_id)
-            if dataset:
-                # Display dataset metadata
-                st.markdown(f"""
-                ### {dataset.get('metadata', {}).get('title', 'Untitled Dataset')}
-                **Authors:** {', '.join(creator.get('name', '') for creator in dataset.get('metadata', {}).get('creators', []))}
-                **Publication Date:** {dataset.get('metadata', {}).get('publication_date', 'N/A')}
-                **Description:** {dataset.get('metadata', {}).get('description', 'No description available')}
-                """)
-                
-                # Get and display files
-                files = zenodo_api.get_files(record_id)
-                if files:
-                    st.subheader("Files")
-                    for file in files:
-                        file_name = file.get('key', '')
-                        file_size = file.get('size', 0) / (1024 * 1024)  # Convert to MB
-                        file_url = file.get('links', {}).get('self', '')
-                        
-                        col1, col2, col3 = st.columns([3, 1, 1])
-                        with col1:
-                            st.write(f"📄 {file_name}")
-                        with col2:
-                            st.write(f"{file_size:.2f} MB")
-                        with col3:
-                            if is_supported_image_format(file_name):
-                                if st.button("Preview", key=file_name):
-                                    st.image(file_url, caption=file_name)
-                            else:
-                                st.download_button(
-                                    "Download",
-                                    data=requests.get(file_url).content,
-                                    file_name=file_name,
-                                    key=f"download_{file_name}"
-                                )
-            else:
-                st.error("Failed to load dataset. Please check the record ID and try again.")
+    with tab1:
+        st.subheader("Access Zenodo Datasets")
+        
+        # Search functionality
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            search_query = st.text_input("Search datasets", placeholder="Enter keywords...")
+        with col2:
+            if st.button("Search"):
+                if search_query:
+                    with st.spinner("Searching..."):
+                        results = zenodo_api.search_datasets(search_query)
+                        if results:
+                            st.session_state.search_results = results
+                        else:
+                            st.warning("No datasets found for your search.")
+        
+        # Direct record access
+        st.subheader("Access Specific Record")
+        record_id = st.text_input("Enter Zenodo Record ID", "7890690")
+        
+        if st.button("Load Record"):
+            with st.spinner("Loading dataset..."):
+                dataset = zenodo_api.get_dataset(record_id)
+                if dataset:
+                    # Use the enhanced metadata display
+                    display_dataset_metadata(dataset)
+                    st.session_state.current_dataset = dataset
+                    
+                    # Show files with enhanced preview
+                    files = zenodo_api.get_files(record_id)
+                    if files:
+                        st.subheader("Files")
+                        for file in files:
+                            display_file_preview(file)
+                else:
+                    st.error("Failed to load dataset. Please check the record ID and try again.")
+        
+        # Display search results if available
+        if 'search_results' in st.session_state:
+            st.subheader("Search Results")
+            for result in st.session_state.search_results[:5]:  # Show first 5 results
+                with st.expander(f"{result.get('metadata', {}).get('title', 'Untitled')}"):
+                    st.write(f"**Authors:** {', '.join(creator.get('name', '') for creator in result.get('metadata', {}).get('creators', []))}")
+                    st.write(f"**Description:** {result.get('metadata', {}).get('description', 'No description')[:200]}...")
+                    if st.button(f"Load Dataset", key=f"load_{result.get('id')}"):
+                        st.session_state.current_dataset = result
+                        st.rerun()
+    
+    with tab2:
+        st.subheader("Upload Your Own Dataset")
+        uploaded_dataset = ingestion_pipeline.upload_interface()
+        if uploaded_dataset:
+            st.session_state.current_dataset = uploaded_dataset
+            st.success("Dataset uploaded successfully!")
 
 elif page == "Analysis":
     st.title("Analysis Tools")
-    st.write("Analysis tools will be implemented here.")
     
-    # Placeholder for analysis options
-    analysis_type = st.selectbox(
-        "Select Analysis Type",
-        ["Image Classification", "Feature Extraction", "Custom Analysis"]
-    )
-    
-    if analysis_type:
-        st.write(f"Selected analysis: {analysis_type}")
+    if 'current_dataset' in st.session_state:
+        # Use the enhanced analysis tools
+        analysis_tools.create_analysis_interface(st.session_state.current_dataset)
+        
+        # Add AI chat interface
+        st.markdown("---")
+        st.subheader("🤖 AI Assistant")
+        create_ai_chat_interface(st.session_state.current_dataset)
+    else:
+        st.info("Please load a dataset first to access analysis tools.")
+        st.markdown("""
+        ### Available Analysis Tools:
+        - **Image Gallery**: Browse and filter images
+        - **Image Analysis**: Measurements, filters, pattern detection
+        - **Data Explorer**: Interactive data visualization
+        - **Time Series Analysis**: Temporal data analysis
+        - **Statistical Overview**: Comprehensive statistics
+        - **AI Assistant**: Natural language queries about your data
+        """)
 
 elif page == "Settings":
     st.title("Settings")
-    st.write("Application settings will be implemented here.")
     
-    # Placeholder for settings
-    st.checkbox("Enable AI features")
-    st.checkbox("Cache datasets locally")
-    api_key = st.text_input("Zenodo API Key (optional)", type="password")
+    # API Configuration
+    st.subheader("API Configuration")
+    api_key = st.text_input("Zenodo API Key (optional)", type="password", help="For accessing private datasets")
     if api_key:
         st.session_state.zenodo_api = ZenodoAPI(api_key=api_key)
+        st.success("API key configured!")
+    
+    # Application Settings
+    st.subheader("Application Settings")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.checkbox("Enable AI features", value=True, key="ai_enabled")
+        st.checkbox("Cache datasets locally", value=True, key="cache_enabled")
+        st.checkbox("Auto-load last dataset", value=False, key="auto_load")
+    
+    with col2:
+        st.selectbox("Default theme", ["Light", "Dark"], key="theme")
+        st.selectbox("Language", ["English"], key="language")
+        st.number_input("Max file size (MB)", min_value=1, max_value=1000, value=100, key="max_file_size")
+    
+    # Data Management
+    st.subheader("Data Management")
+    if st.button("Clear cached data"):
+        # Clear session state
+        for key in list(st.session_state.keys()):
+            if key.startswith('cache_'):
+                del st.session_state[key]
+        st.success("Cached data cleared!")
+    
+    if st.button("Export settings"):
+        st.info("Settings export feature coming soon!")
 
 # Footer
 st.markdown("---")
-st.markdown("Built with Streamlit • [GitHub Repository](https://github.com/yourusername/zenodo-image-browser)")
+st.markdown("Built with Streamlit • [GitHub Repository](https://github.com/AroundInteger/zenodo-image-browser)")
