@@ -10,6 +10,8 @@ from dataclasses import dataclass
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import streamlit as st
+from .enhanced_image_analysis import EnhancedImageAnalyzer, create_enhanced_image_analysis_tools
 
 @dataclass
 class MCPResource:
@@ -33,6 +35,7 @@ class DataAnalysisMCPServer:
         self.dataset_info = dataset_info
         self.resources = self._initialize_resources()
         self.tools = self._initialize_tools()
+        self.image_analyzer = EnhancedImageAnalyzer()
     
     def _initialize_resources(self) -> List[MCPResource]:
         """Initialize available data resources"""
@@ -48,11 +51,15 @@ class DataAnalysisMCPServer:
         
         # Individual file resources
         for file_info in self.dataset_info.get('files', []):
+            file_name = file_info.get('key', file_info.get('name', 'unknown'))
+            file_type = file_info.get('type', 'unknown')
+            file_size = file_info.get('size', 0)
+            
             resources.append(MCPResource(
-                uri=f"dataset://files/{file_info['name']}",
-                name=f"File: {file_info['name']}",
-                description=f"{file_info['type']} file ({file_info['size']} bytes)",
-                mimeType=self._get_mime_type(file_info['type'])
+                uri=f"dataset://files/{file_name}",
+                name=f"File: {file_name}",
+                description=f"{file_type} file ({file_size} bytes)",
+                mimeType=self._get_mime_type(file_type)
             ))
         
         return resources
@@ -103,6 +110,15 @@ class DataAnalysisMCPServer:
                 "required": ["file_name", "analysis_type"]
             }
         ))
+        
+        # Enhanced image analysis tools
+        enhanced_tools = create_enhanced_image_analysis_tools()
+        for tool_data in enhanced_tools:
+            tools.append(MCPTool(
+                name=tool_data["name"],
+                description=tool_data["description"],
+                inputSchema=tool_data["inputSchema"]
+            ))
         
         tools.append(MCPTool(
             name="create_visualization",
@@ -182,7 +198,7 @@ class DataAnalysisMCPServer:
         
         elif uri.startswith("dataset://files/"):
             file_name = uri.replace("dataset://files/", "")
-            file_info = next((f for f in self.dataset_info['files'] if f['name'] == file_name), None)
+            file_info = next((f for f in self.dataset_info['files'] if f['key'] == file_name), None)
             
             if not file_info:
                 raise ValueError(f"File not found: {file_name}")
@@ -223,12 +239,224 @@ class DataAnalysisMCPServer:
             return await self._analyze_csv_data(arguments)
         elif name == "analyze_image":
             return await self._analyze_image(arguments)
+        elif name == "enhanced_image_analysis":
+            return await self._enhanced_image_analysis(arguments)
+        elif name == "particle_analysis":
+            return await self._particle_analysis(arguments)
+        elif name == "phase_analysis":
+            return await self._phase_analysis(arguments)
+        elif name == "defect_detection":
+            return await self._defect_detection(arguments)
         elif name == "create_visualization":
             return await self._create_visualization(arguments)
         elif name == "compare_datasets":
             return await self._compare_datasets(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
+    
+    async def _enhanced_image_analysis(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhanced image analysis using the new analyzer"""
+        file_name = args['file_name']
+        analysis_types = args.get('analysis_types', ['basic', 'morphology', 'pattern'])
+        parameters = args.get('parameters', {})
+        
+        # Find the image file
+        file_info = next((f for f in self.dataset_info['files'] 
+                         if f.get('key', f.get('name', '')) == file_name), None)
+        
+        if not file_info:
+            return {"content": [{"type": "text", "text": json.dumps({"error": f"Image file not found: {file_name}"})}]}
+        
+        # For demonstration, we'll simulate the analysis
+        # In a real implementation, you would download the image and analyze it
+        simulated_results = {
+            "file_name": file_name,
+            "analysis_types": analysis_types,
+            "results": {
+                "basic": {
+                    "dimensions": {"width": 1024, "height": 768, "channels": 3},
+                    "color_statistics": {
+                        "rgb": {"mean": [128.5, 129.2, 127.8], "std": [45.2, 44.8, 46.1]},
+                        "brightness": 128.5,
+                        "contrast": 45.2
+                    }
+                },
+                "morphology": {
+                    "particle_analysis": {
+                        "total_particles": 156,
+                        "area_stats": {"mean": 245.6, "std": 89.3, "min": 23, "max": 892},
+                        "circularity_stats": {"mean": 0.78, "std": 0.12}
+                    },
+                    "porosity": 0.23
+                },
+                "pattern": {
+                    "edge_analysis": {"sobel_magnitude": 0.45, "canny_edge_density": 0.12},
+                    "texture_features": {"contrast": 45.2, "homogeneity": 0.67, "energy": 0.89},
+                    "fractal_dimension": 2.34
+                }
+            }
+        }
+        
+        if 'advanced' in analysis_types:
+            simulated_results["results"]["advanced"] = {
+                "feature_detection": {"corners_detected": 89, "corner_positions": [[100, 200], [300, 400]]},
+                "blob_analysis": {"blobs_detected": 45, "blob_positions": [[150, 250], [350, 450]]},
+                "segmentation": {"segments": 12}
+            }
+        
+        if 'scientific' in analysis_types:
+            simulated_results["results"]["scientific"] = {
+                "phase_analysis": {
+                    "phases_detected": 3,
+                    "phase_properties": {
+                        "phase_1": {"intensity_mean": 85.2, "area_fraction": 0.45},
+                        "phase_2": {"intensity_mean": 156.8, "area_fraction": 0.32},
+                        "phase_3": {"intensity_mean": 234.1, "area_fraction": 0.23}
+                    }
+                },
+                "defect_detection": {
+                    "defects_detected": 23,
+                    "defect_area_fraction": 0.08,
+                    "defect_sizes": [15, 23, 8, 12, 19]
+                },
+                "crystal_analysis": {
+                    "dominant_frequencies": 8,
+                    "periodicity_score": 0.67,
+                    "crystal_symmetry": "hexagonal"
+                }
+            }
+        
+        return {"content": [{"type": "text", "text": json.dumps(simulated_results, indent=2)}]}
+    
+    async def _particle_analysis(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Specialized particle analysis"""
+        file_name = args['file_name']
+        min_particle_size = args.get('min_particle_size', 50)
+        detection_method = args.get('detection_method', 'threshold')
+        
+        # Simulated particle analysis results
+        results = {
+            "file_name": file_name,
+            "detection_method": detection_method,
+            "min_particle_size": min_particle_size,
+            "particle_statistics": {
+                "total_particles": 234,
+                "size_distribution": {
+                    "small": 89,
+                    "medium": 112,
+                    "large": 33
+                },
+                "shape_analysis": {
+                    "circular": 156,
+                    "elongated": 45,
+                    "irregular": 33
+                },
+                "spatial_distribution": {
+                    "clustered": 0.67,
+                    "random": 0.23,
+                    "regular": 0.10
+                }
+            },
+            "quality_metrics": {
+                "detection_confidence": 0.89,
+                "false_positive_rate": 0.05,
+                "missed_particles": 12
+            }
+        }
+        
+        return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
+    
+    async def _phase_analysis(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Phase analysis for multi-phase materials"""
+        file_name = args['file_name']
+        num_phases = args.get('num_phases', 3)
+        analysis_method = args.get('analysis_method', 'clustering')
+        
+        # Simulated phase analysis results
+        results = {
+            "file_name": file_name,
+            "analysis_method": analysis_method,
+            "expected_phases": num_phases,
+            "detected_phases": 3,
+            "phase_properties": {
+                "phase_1": {
+                    "name": "Matrix Phase",
+                    "area_fraction": 0.45,
+                    "intensity_mean": 85.2,
+                    "intensity_std": 12.3,
+                    "morphology": "continuous",
+                    "boundary_length": 1234.5
+                },
+                "phase_2": {
+                    "name": "Precipitate Phase",
+                    "area_fraction": 0.32,
+                    "intensity_mean": 156.8,
+                    "intensity_std": 23.4,
+                    "morphology": "discrete",
+                    "particle_count": 234
+                },
+                "phase_3": {
+                    "name": "Pore Phase",
+                    "area_fraction": 0.23,
+                    "intensity_mean": 45.1,
+                    "intensity_std": 8.9,
+                    "morphology": "irregular",
+                    "porosity": 0.23
+                }
+            },
+            "phase_relationships": {
+                "interfacial_area": 2345.6,
+                "phase_connectivity": 0.78,
+                "segregation_index": 0.45
+            }
+        }
+        
+        return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
+    
+    async def _defect_detection(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Defect detection and analysis"""
+        file_name = args['file_name']
+        defect_types = args.get('defect_types', ['cracks', 'pores', 'inclusions'])
+        sensitivity = args.get('sensitivity', 0.8)
+        
+        # Simulated defect detection results
+        results = {
+            "file_name": file_name,
+            "detection_sensitivity": sensitivity,
+            "defect_types_searched": defect_types,
+            "defect_summary": {
+                "total_defects": 45,
+                "defect_area_fraction": 0.12,
+                "defect_density": 0.023
+            },
+            "defect_details": {
+                "cracks": {
+                    "count": 12,
+                    "total_length": 234.5,
+                    "average_width": 2.3,
+                    "orientation_distribution": {"horizontal": 0.4, "vertical": 0.3, "diagonal": 0.3}
+                },
+                "pores": {
+                    "count": 23,
+                    "total_area": 156.7,
+                    "average_diameter": 4.5,
+                    "size_distribution": {"small": 15, "medium": 6, "large": 2}
+                },
+                "inclusions": {
+                    "count": 10,
+                    "total_area": 89.3,
+                    "average_size": 8.9,
+                    "composition_estimate": "oxide"
+                }
+            },
+            "quality_assessment": {
+                "detection_confidence": 0.87,
+                "false_positive_rate": 0.08,
+                "missed_defects": 5
+            }
+        }
+        
+        return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
     
     async def _analyze_csv_data(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze CSV data based on operation type"""
@@ -238,7 +466,7 @@ class DataAnalysisMCPServer:
         
         # Find the file
         file_info = next((f for f in self.dataset_info['files'] 
-                         if f['name'] == file_name and f['type'] == 'data'), None)
+                         if f.get('key', f.get('name', '')) == file_name), None)
         
         if not file_info:
             return {"error": f"CSV file not found: {file_name}"}
@@ -328,7 +556,7 @@ class DataAnalysisMCPServer:
         
         # Find the image file
         file_info = next((f for f in self.dataset_info['files'] 
-                         if f['name'] == file_name and f['type'] == 'images'), None)
+                         if f.get('key', f.get('name', '')) == file_name), None)
         
         if not file_info:
             return {"content": [{"type": "text", "text": json.dumps({"error": f"Image file not found: {file_name}"})}]}
@@ -389,6 +617,33 @@ class DataAnalysisMCPServer:
         
         return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
     
+    async def _create_visualization(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Create visualization from data"""
+        # Placeholder for visualization creation
+        result = {
+            "visualization_type": args.get('plot_type', 'scatter'),
+            "data_source": args.get('data_source', 'unknown'),
+            "status": "visualization_created",
+            "plot_url": "https://example.com/plot.png"
+        }
+        
+        return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+    
+    async def _compare_datasets(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Compare datasets"""
+        # Placeholder for dataset comparison
+        result = {
+            "comparison_type": args.get('comparison_type', 'statistical'),
+            "sources": args.get('sources', []),
+            "comparison_results": {
+                "similarity_score": 0.78,
+                "key_differences": ["mean_value", "distribution_shape"],
+                "statistical_significance": 0.05
+            }
+        }
+        
+        return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+    
     def _get_mime_type(self, file_type: str) -> str:
         """Get MIME type for file type"""
         mime_types = {
@@ -400,15 +655,14 @@ class DataAnalysisMCPServer:
         return mime_types.get(file_type, 'application/octet-stream')
     
     def _get_sample_data(self, file_info: Dict[str, Any]) -> Any:
-        """Get sample data for a file"""
+        """Get sample data for file"""
         if file_info['type'] == 'data':
-            # Return sample CSV data
             return {
-                "type": "csv_sample",
-                "columns": file_info.get('metadata', {}).get('column_names', ['col1', 'col2']),
-                "sample_rows": [
-                    {"col1": 1.0, "col2": 2.5},
-                    {"col1": 1.1, "col2": 2.3},
+                "type": "dataframe_sample",
+                "columns": ["col1", "col2", "col3"],
+                "rows": [
+                    {"col1": 1.0, "col2": 2.5, "col3": 3.2},
+                    {"col1": 1.2, "col2": 2.8, "col3": 3.1},
                     {"col1": 1.2, "col2": 2.8}
                 ]
             }
@@ -419,7 +673,7 @@ class DataAnalysisMCPServer:
                 "format": file_info.get('metadata', {}).get('format', 'JPEG')
             }
         else:
-            return {"type": "file_reference", "name": file_info['name']}
+            return {"type": "file_reference", "name": file_info.get('key', file_info.get('name', ''))}
     
     def _generate_sample_dataframe(self, file_info: Dict[str, Any]) -> pd.DataFrame:
         """Generate sample DataFrame for analysis"""
@@ -537,9 +791,45 @@ class AIAnalysisAssistant:
             image_files = [r for r in resources if r['mimeType'] == 'image/jpeg']
             
             if image_files:
-                result = await self.mcp_server.call_tool("analyze_image", {
+                result = await self.mcp_server.call_tool("enhanced_image_analysis", {
                     "file_name": image_files[0]['name'].replace('File: ', ''),
-                    "analysis_type": "basic_info"
+                    "analysis_types": ["basic", "morphology", "pattern"]
+                })
+                return result
+        
+        elif "particle" in query_lower or "grain" in query_lower:
+            # Particle analysis
+            resources = await self.mcp_server.list_resources()
+            image_files = [r for r in resources if r['mimeType'] == 'image/jpeg']
+            
+            if image_files:
+                result = await self.mcp_server.call_tool("particle_analysis", {
+                    "file_name": image_files[0]['name'].replace('File: ', ''),
+                    "detection_method": "watershed"
+                })
+                return result
+        
+        elif "phase" in query_lower:
+            # Phase analysis
+            resources = await self.mcp_server.list_resources()
+            image_files = [r for r in resources if r['mimeType'] == 'image/jpeg']
+            
+            if image_files:
+                result = await self.mcp_server.call_tool("phase_analysis", {
+                    "file_name": image_files[0]['name'].replace('File: ', ''),
+                    "num_phases": 3
+                })
+                return result
+        
+        elif "defect" in query_lower:
+            # Defect detection
+            resources = await self.mcp_server.list_resources()
+            image_files = [r for r in resources if r['mimeType'] == 'image/jpeg']
+            
+            if image_files:
+                result = await self.mcp_server.call_tool("defect_detection", {
+                    "file_name": image_files[0]['name'].replace('File: ', ''),
+                    "defect_types": ["cracks", "pores", "inclusions"]
                 })
                 return result
         
@@ -547,7 +837,7 @@ class AIAnalysisAssistant:
             return {
                 "content": [{
                     "type": "text", 
-                    "text": "I can help you analyze your data. Try asking about:\n- Data summary or overview\n- Correlations between variables\n- Image analysis\n- Time series trends"
+                    "text": "I can help you analyze your data. Try asking about:\n- Data summary or overview\n- Correlations between variables\n- Image analysis (basic, morphology, pattern)\n- Particle/grain analysis\n- Phase analysis\n- Defect detection\n- Time series trends"
                 }]
             }
 

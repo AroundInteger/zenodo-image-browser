@@ -95,4 +95,60 @@ def get_image_thumbnail(image: Image.Image, size: Tuple[int, int] = (200, 200)) 
         Image.Image: Thumbnail image
     """
     image.thumbnail(size, Image.Resampling.LANCZOS)
-    return image 
+    return image
+
+def get_file_type(filename: str) -> str:
+    """
+    Determine the type of file based on its extension.
+    
+    Args:
+        filename (str): Name of the file
+        
+    Returns:
+        str: File type ('images', 'data', 'documents', 'videos', 'other')
+    """
+    filename_lower = filename.lower()
+    
+    # Image formats
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.svg'}
+    if any(filename_lower.endswith(ext) for ext in image_extensions):
+        return 'images'
+    
+    # Data formats
+    data_extensions = {'.csv', '.json', '.xml', '.xlsx', '.xls', '.txt', '.dat', '.h5', '.hdf5'}
+    if any(filename_lower.endswith(ext) for ext in data_extensions):
+        return 'data'
+    
+    # Document formats
+    document_extensions = {'.pdf', '.doc', '.docx', '.ppt', '.pptx', '.md', '.rst'}
+    if any(filename_lower.endswith(ext) for ext in document_extensions):
+        return 'documents'
+    
+    # Video formats
+    video_extensions = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv'}
+    if any(filename_lower.endswith(ext) for ext in video_extensions):
+        return 'videos'
+    
+    # Default to other
+    return 'other'
+
+def format_file_size(size_bytes: int) -> str:
+    """
+    Format file size in bytes to human-readable format.
+    
+    Args:
+        size_bytes (int): Size in bytes
+        
+    Returns:
+        str: Formatted file size (e.g., "1.5 MB", "2.3 GB")
+    """
+    if size_bytes == 0:
+        return "0 B"
+    
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    import math
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(size_bytes / p, 2)
+    
+    return f"{s} {size_names[i]}" 

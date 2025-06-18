@@ -129,7 +129,7 @@ def display_file_preview(file_info: Dict[Any, Any]) -> None:
         
         if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp']:
             try:
-                st.image(file_url, caption=file_name, use_column_width=True)
+                st.image(file_url, caption=file_name, use_container_width=True)
             except Exception as e:
                 st.error(f"Could not load image: {e}")
         

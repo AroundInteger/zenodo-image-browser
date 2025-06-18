@@ -1,13 +1,16 @@
 # src/analysis/interactive_tools.py
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from PIL import Image
+import plotly.graph_objects as go
+import plotly.express as px
+import requests
 import cv2
 from typing import Dict, List, Any, Optional
+import requests
+from PIL import Image
+import io
+import matplotlib.pyplot as plt
 
 class InteractiveAnalysisTools:
     """Interactive analysis tools for different data types"""
@@ -111,10 +114,24 @@ class InteractiveAnalysisTools:
             with col4:
                 if file_url:
                     if st.button("Preview", key=f"preview_{file_name}"):
-                        if file_type == 'images':
-                            st.image(file_url, caption=file_name)
-                        else:
-                            st.info(f"Preview not available for {file_type} files")
+                        try:
+                            st.image(file_url, caption=file_name, use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Could not load image: {e}")
+                            st.info("You can still download the file using the button below.")
+        
+        # Download button
+        if st.button("📥 Download", key=f"download_{file_name}"):
+            try:
+                response = requests.get(file_url)
+                st.download_button(
+                    "Click to download",
+                    data=response.content,
+                    file_name=file_name,
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Could not download file: {e}")
     
     def image_gallery(self, dataset_info: Dict[str, Any]):
         """Interactive image gallery with filtering and sorting"""
@@ -159,12 +176,12 @@ class InteractiveAnalysisTools:
                     with col:
                         # Display image
                         if file_url:
-                            st.image(file_url, caption=file_name, use_column_width=True)
+                            st.image(file_url, caption=file_name, use_container_width=True)
                         else:
                             st.image(
                                 f"https://via.placeholder.com/300x200?text={file_name[:10]}",
                                 caption=file_name,
-                                use_column_width=True
+                                use_container_width=True
                             )
                         
                         if show_metadata:
@@ -353,9 +370,10 @@ class InteractiveAnalysisTools:
         st.info("Statistical overview feature coming soon!")
     
     def display_basic_image_info(self, image_info: Dict[str, Any]):
-        """Display basic image information"""
+        """Display real basic image information"""
         file_name = image_info.get('key', image_info.get('name', ''))
         file_size = image_info.get('size', 0)
+        file_url = image_info.get('links', {}).get('self', '')
         
         col1, col2 = st.columns(2)
         
@@ -363,55 +381,302 @@ class InteractiveAnalysisTools:
             st.markdown("**File Information**")
             st.write(f"📁 **Name:** {file_name}")
             st.write(f"💾 **Size:** {file_size/1024:.1f} KB")
+            st.write(f"📋 **Format:** {file_name.split('.')[-1].upper() if '.' in file_name else 'Unknown'}")
         
         with col2:
             st.markdown("**Image Properties**")
-            st.write(f"📐 **Dimensions:** Unknown (would be extracted from actual image)")
-            st.write(f"🎨 **Color Mode:** Unknown")
-            st.write(f"📋 **Format:** {file_name.split('.')[-1].upper() if '.' in file_name else 'Unknown'}")
+            
+            if file_url:
+                try:
+                    with st.spinner("Loading image properties..."):
+                        response = requests.get(file_url)
+                        if response.status_code == 200:
+                            image = Image.open(io.BytesIO(response.content))
+                            
+                            st.write(f"📐 **Dimensions:** {image.width} × {image.height} px")
+                            st.write(f"🎨 **Color Mode:** {image.mode}")
+                            st.write(f"📊 **Total Pixels:** {image.width * image.height:,}")
+                            
+                            # Calculate aspect ratio
+                            aspect_ratio = image.width / image.height
+                            st.write(f"📏 **Aspect Ratio:** {aspect_ratio:.2f}")
+                            
+                            # File format info
+                            if image.format:
+                                st.write(f"📄 **Format:** {image.format}")
+                            
+                            # Memory usage estimate
+                            if image.mode == 'RGB':
+                                memory_estimate = image.width * image.height * 3
+                            elif image.mode == 'RGBA':
+                                memory_estimate = image.width * image.height * 4
+                            else:
+                                memory_estimate = image.width * image.height
+                            
+                            st.write(f"💾 **Memory Estimate:** {memory_estimate/1024:.1f} KB")
+                            
+                            # Display the image
+                            st.markdown("**Image Preview**")
+                            st.image(image, caption=file_name, use_container_width=True)
+                            
+                        else:
+                            st.write(f"📐 **Dimensions:** Unknown (download failed)")
+                            st.write(f"🎨 **Color Mode:** Unknown")
+                            st.write(f"📊 **Total Pixels:** Unknown")
+                except Exception as e:
+                    st.write(f"📐 **Dimensions:** Unknown (error: {str(e)[:50]}...)")
+                    st.write(f"🎨 **Color Mode:** Unknown")
+                    st.write(f"📊 **Total Pixels:** Unknown")
+            else:
+                st.write(f"📐 **Dimensions:** Unknown (no URL)")
+                st.write(f"🎨 **Color Mode:** Unknown")
+                st.write(f"📊 **Total Pixels:** Unknown")
     
     def display_color_analysis(self, image_info: Dict[str, Any]):
-        """Display color analysis results"""
+        """Display real color analysis results"""
         st.markdown("**Color Analysis Results**")
         
-        # Simulated color histogram
-        colors = ['Red', 'Green', 'Blue']
-        values = np.random.randint(0, 256, 3)
+        # Get image URL
+        file_url = image_info.get('links', {}).get('self', '')
+        if not file_url:
+            st.error("Could not access image URL for color analysis")
+            return
         
-        fig = go.Figure(data=[go.Bar(x=colors, y=values)])
-        fig.update_layout(title="Color Channel Histogram", yaxis_title="Pixel Count")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Color statistics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Dominant Color", "Blue", delta="45%")
-        with col2:
-            st.metric("Brightness", "128", delta="12")
-        with col3:
-            st.metric("Contrast", "0.75", delta="0.1")
+        try:
+            # Download and process the image
+            with st.spinner("Processing image for color analysis..."):
+                response = requests.get(file_url)
+                if response.status_code != 200:
+                    st.error(f"Failed to download image: {response.status_code}")
+                    return
+                
+                # Convert to PIL Image
+                image = Image.open(io.BytesIO(response.content))
+                
+                # Convert to numpy array
+                img_array = np.array(image)
+                
+                # Calculate color statistics
+                if len(img_array.shape) == 3:  # Color image
+                    r, g, b = img_array[:,:,0], img_array[:,:,1], img_array[:,:,2]
+                    
+                    # Calculate means and standard deviations
+                    r_mean, r_std = np.mean(r), np.std(r)
+                    g_mean, g_std = np.mean(g), np.std(g)
+                    b_mean, b_std = np.mean(b), np.std(b)
+                    
+                    # Calculate brightness and contrast
+                    brightness = np.mean(img_array)
+                    contrast = np.std(img_array)
+                    
+                    # Find dominant color
+                    color_means = [r_mean, g_mean, b_mean]
+                    color_names = ['Red', 'Green', 'Blue']
+                    dominant_color = color_names[np.argmax(color_means)]
+                    
+                    # Display color histogram
+                    colors = ['Red', 'Green', 'Blue']
+                    values = [r_mean, g_mean, b_mean]
+                    
+                    fig = go.Figure(data=[go.Bar(x=colors, y=values, marker_color=['red', 'green', 'blue'])])
+                    fig.update_layout(title="RGB Channel Means", yaxis_title="Average Intensity")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Color statistics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Dominant Color", dominant_color, delta=f"{max(color_means):.0f}")
+                        st.metric("Brightness", f"{brightness:.1f}", delta="Real analysis")
+                    with col2:
+                        st.metric("Contrast", f"{contrast:.1f}", delta="Real analysis")
+                        st.metric("Red Mean", f"{r_mean:.1f}")
+                    with col3:
+                        st.metric("Green Mean", f"{g_mean:.1f}")
+                        st.metric("Blue Mean", f"{b_mean:.1f}")
+                    
+                    # RGB histograms
+                    st.markdown("#### RGB Channel Distributions")
+                    
+                    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+                    axes[0].hist(r.flatten(), bins=50, color='red', alpha=0.7)
+                    axes[0].set_title('Red Channel')
+                    axes[0].set_xlabel('Intensity')
+                    axes[0].set_ylabel('Frequency')
+                    
+                    axes[1].hist(g.flatten(), bins=50, color='green', alpha=0.7)
+                    axes[1].set_title('Green Channel')
+                    axes[1].set_xlabel('Intensity')
+                    axes[1].set_ylabel('Frequency')
+                    
+                    axes[2].hist(b.flatten(), bins=50, color='blue', alpha=0.7)
+                    axes[2].set_title('Blue Channel')
+                    axes[2].set_xlabel('Intensity')
+                    axes[2].set_ylabel('Frequency')
+                    
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    
+                    # Image properties
+                    st.markdown("#### Image Properties")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Width", f"{image.width} px")
+                        st.metric("Height", f"{image.height} px")
+                    with col2:
+                        st.metric("Mode", image.mode)
+                        st.metric("Format", image.format or "Unknown")
+                    with col3:
+                        st.metric("Total Pixels", f"{image.width * image.height:,}")
+                        st.metric("Memory Size", f"{len(response.content)/1024:.1f} KB")
+                    
+                    st.success("Color analysis completed successfully!")
+                    
+                else:  # Grayscale image
+                    st.info("This is a grayscale image")
+                    brightness = np.mean(img_array)
+                    contrast = np.std(img_array)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Brightness", f"{brightness:.1f}")
+                    with col2:
+                        st.metric("Contrast", f"{contrast:.1f}")
+                    
+                    # Grayscale histogram
+                    fig = px.histogram(x=img_array.flatten(), nbins=50,
+                                     title="Grayscale Intensity Distribution",
+                                     labels={'x': 'Intensity', 'y': 'Frequency'})
+                    st.plotly_chart(fig, use_container_width=True)
+                
+        except Exception as e:
+            st.error(f"Error during color analysis: {str(e)}")
+            st.info("Falling back to simulated results...")
+            
+            # Fallback to simulated results
+            colors = ['Red', 'Green', 'Blue']
+            values = np.random.randint(0, 256, 3)
+            
+            fig = go.Figure(data=[go.Bar(x=colors, y=values)])
+            fig.update_layout(title="Color Channel Histogram (Simulated)", yaxis_title="Pixel Count")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Color statistics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Dominant Color", "Blue", delta="Simulated")
+                st.metric("Brightness", "128", delta="Simulated")
+            with col2:
+                st.metric("Contrast", "0.75", delta="Simulated")
     
     def display_edge_detection(self, image_info: Dict[str, Any]):
-        """Display edge detection results"""
+        """Display real edge detection results"""
         st.markdown("**Edge Detection Results**")
+        
+        # Get image URL
+        file_url = image_info.get('links', {}).get('self', '')
+        if not file_url:
+            st.error("Could not access image URL for edge detection")
+            return
         
         # Parameters from session state
         params = st.session_state.get('edge_params', {'t1': 50, 't2': 150})
         
         st.write(f"Using thresholds: {params['t1']}, {params['t2']}")
         
-        # Simulated edge detection metrics
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Edges Detected", "1,247", delta="23")
-        with col2:
-            st.metric("Edge Density", "12.3%", delta="2.1%")
-        
-        # Placeholder for edge image
-        st.image(
-            "https://via.placeholder.com/400x300?text=Edge+Detection+Result",
-            caption="Edge Detection Result"
-        )
+        try:
+            # Download and process the image
+            with st.spinner("Processing image for edge detection..."):
+                response = requests.get(file_url)
+                if response.status_code != 200:
+                    st.error(f"Failed to download image: {response.status_code}")
+                    return
+                
+                # Convert to PIL Image
+                image = Image.open(io.BytesIO(response.content))
+                
+                # Convert to OpenCV format
+                if image.mode == 'RGBA':
+                    image = image.convert('RGB')
+                
+                # Convert PIL to OpenCV format
+                opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+                
+                # Convert to grayscale for edge detection
+                gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
+                
+                # Apply Gaussian blur to reduce noise
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                
+                # Apply Canny edge detection
+                edges = cv2.Canny(blurred, params['t1'], params['t2'])
+                
+                # Calculate edge statistics
+                edge_pixels = np.sum(edges > 0)
+                total_pixels = edges.shape[0] * edges.shape[1]
+                edge_density = (edge_pixels / total_pixels) * 100
+                
+                # Find contours
+                contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                # Display results
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Edges Detected", f"{edge_pixels:,}", delta="Real analysis")
+                    st.metric("Edge Density", f"{edge_density:.1f}%", delta="Real analysis")
+                    st.metric("Contours Found", len(contours), delta="Real analysis")
+                
+                with col2:
+                    # Display original image
+                    st.image(image, caption="Original Image", use_container_width=True)
+                
+                # Display edge detection result
+                st.markdown("#### Edge Detection Result")
+                
+                # Convert edges back to PIL for display
+                edge_image = Image.fromarray(edges)
+                st.image(edge_image, caption="Edge Detection Result", use_container_width=True)
+                
+                # Additional edge analysis
+                st.markdown("#### Edge Analysis Details")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Image Width", f"{image.width} px")
+                    st.metric("Image Height", f"{image.height} px")
+                with col2:
+                    st.metric("Total Pixels", f"{total_pixels:,}")
+                    st.metric("Edge Pixels", f"{edge_pixels:,}")
+                with col3:
+                    st.metric("Edge Ratio", f"{edge_density:.2f}%")
+                    st.metric("Contour Count", len(contours))
+                
+                # Edge strength distribution
+                if edge_pixels > 0:
+                    st.markdown("#### Edge Strength Distribution")
+                    edge_strengths = edges[edges > 0]
+                    fig = px.histogram(x=edge_strengths, nbins=20, 
+                                     title="Distribution of Edge Strengths",
+                                     labels={'x': 'Edge Strength', 'y': 'Count'})
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                st.success("Edge detection completed successfully!")
+                
+        except Exception as e:
+            st.error(f"Error during edge detection: {str(e)}")
+            st.info("Falling back to simulated results...")
+            
+            # Fallback to simulated results
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Edges Detected", "1,247", delta="Simulated")
+            with col2:
+                st.metric("Edge Density", "12.3%", delta="Simulated")
+            
+            # Placeholder for edge image
+            st.image(
+                "https://via.placeholder.com/400x300?text=Edge+Detection+Result",
+                caption="Edge Detection Result (Simulated)"
+            )
     
     def display_pattern_analysis(self, image_info: Dict[str, Any]):
         """Display pattern analysis results"""

@@ -1,13 +1,24 @@
+"""
+Zenodo Image Browser - Main Application
+A web application for browsing and analyzing experimental images from Zenodo datasets
+"""
+
 import streamlit as st
 import os
 from pathlib import Path
 from src.api.zenodo import ZenodoAPI
-from src.utils.image_utils import is_valid_image_url, get_image_dimensions, is_supported_image_format
+from src.utils.image_utils import is_valid_image_url, get_image_dimensions, is_supported_image_format, get_file_type, format_file_size
 from src.components.metadata_display import display_dataset_metadata, display_file_preview
 from src.data.ingestion import DataIngestionPipeline
 from src.analysis.interactive_tools import InteractiveAnalysisTools
+from src.analysis.enhanced_image_interface import create_enhanced_image_analysis_interface
 from src.ai.mcp_server import create_ai_chat_interface
 import requests
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import json
+from datetime import datetime
 
 # Set page config
 st.set_page_config(
@@ -42,6 +53,36 @@ st.markdown("""
         padding: 1rem;
         border-radius: 5px;
         margin: 0.5rem 0;
+    }
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .file-card {
+        background-color: white;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 1rem;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #f0f2f6;
+        border-radius: 4px 4px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1f77b4;
+        color: white;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -207,3 +248,21 @@ elif page == "Settings":
 # Footer
 st.markdown("---")
 st.markdown("Built with Streamlit • [GitHub Repository](https://github.com/AroundInteger/zenodo-image-browser)")
+
+def show_ai_page():
+    """Display the AI assistant page"""
+    st.header("🤖 AI Analysis Assistant")
+    
+    # Initialize with example dataset for demonstration
+    if 'current_dataset' not in st.session_state:
+        st.session_state.current_dataset = {
+            "id": "7890690",
+            "title": "Example Experimental Dataset",
+            "files": [
+                {"name": "sample_image.jpg", "type": "images", "size": 1024000},
+                {"name": "experiment_data.csv", "type": "data", "size": 51200}
+            ]
+        }
+    
+    # Create AI chat interface
+    create_ai_chat_interface(st.session_state.current_dataset)
