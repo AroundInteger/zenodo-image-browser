@@ -94,6 +94,7 @@ class DataIngestionPipeline:
     def analyze_file(self, uploaded_file) -> Dict[str, Any]:
         """Analyze individual file and extract metadata"""
         file_info = {
+            'key': uploaded_file.name,  # Use 'key' to match Zenodo structure
             'name': uploaded_file.name,
             'size': uploaded_file.size,
             'type': self.get_file_type(uploaded_file.name),
@@ -201,90 +202,68 @@ class DataIngestionPipeline:
         return authors
     
     def generate_dataset_summary(self, files: List[Dict]) -> Dict[str, Any]:
-        """Generate high-level dataset summary"""
-        summary = {
-            'total_files': len(files),
-            'total_size_mb': sum(f['size'] for f in files) / (1024 * 1024),
-            'file_types': {},
-            'has_images': False,
-            'has_data': False,
-            'has_time_series': False
+        """Generate summary statistics for the dataset"""
+        total_files = len(files)
+        total_size = sum(f.get('size', 0) for f in files)
+        
+        # Count by type
+        type_counts = {}
+        for file in files:
+            file_type = file.get('type', 'unknown')
+            type_counts[file_type] = type_counts.get(file_type, 0) + 1
+        
+        return {
+            'total_files': total_files,
+            'total_size_bytes': total_size,
+            'total_size_mb': total_size / (1024 * 1024),
+            'file_types': type_counts,
+            'largest_file': max(files, key=lambda x: x.get('size', 0)) if files else None
         }
-        
-        # Count file types
-        for file_info in files:
-            file_type = file_info['type']
-            summary['file_types'][file_type] = summary['file_types'].get(file_type, 0) + 1
-            
-            if file_type == 'images':
-                summary['has_images'] = True
-            elif file_type == 'data':
-                summary['has_data'] = True
-                # Check if CSV might be time series
-                if 'metadata' in file_info and 'column_names' in file_info['metadata']:
-                    cols = [c.lower() for c in file_info['metadata']['column_names']]
-                    if any(time_word in ' '.join(cols) for time_word in ['time', 'date', 'timestamp']):
-                        summary['has_time_series'] = True
-        
-        return summary
     
     def display_upload_results(self, dataset_info: Dict[str, Any]):
-        """Display upload processing results"""
-        st.success("✅ Files processed successfully!")
+        """Display upload results and summary"""
+        st.success("✅ Dataset processed successfully!")
         
-        # Dataset overview
-        st.subheader("Dataset Overview")
-        col1, col2, col3 = st.columns(3)
+        # Display summary
+        summary = dataset_info['summary']
         
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Files", dataset_info['summary']['total_files'])
+            st.metric("Total Files", summary['total_files'])
         with col2:
-            st.metric("Total Size", f"{dataset_info['summary']['total_size_mb']:.1f} MB")
+            st.metric("Total Size", f"{summary['total_size_mb']:.2f} MB")
         with col3:
-            st.metric("File Types", len(dataset_info['summary']['file_types']))
+            st.metric("File Types", len(summary['file_types']))
+        with col4:
+            largest = summary['largest_file']
+            if largest:
+                st.metric("Largest File", f"{largest['size']/(1024*1024):.2f} MB")
         
-        # File details
-        with st.expander("📋 File Details"):
-            for file_info in dataset_info['files']:
-                st.markdown(f"**{file_info['name']}** ({file_info['type']})")
-                st.markdown(f"- Size: {file_info['size'] / 1024:.1f} KB")
-                st.markdown(f"- Checksum: `{file_info['checksum'][:8]}...`")
-                
-                if file_info['metadata']:
-                    if file_info['type'] == 'images' and 'dimensions' in file_info['metadata']:
-                        dims = file_info['metadata']['dimensions']
-                        st.markdown(f"- Dimensions: {dims[0]} × {dims[1]}")
-                    elif file_info['type'] == 'data' and 'rows' in file_info['metadata']:
-                        rows = file_info['metadata']['rows']
-                        cols = file_info['metadata']['columns']
-                        st.markdown(f"- Data: {rows} rows × {cols} columns")
-                
-                st.markdown("---")
+        # File type breakdown
+        st.markdown("#### File Type Breakdown")
+        for file_type, count in summary['file_types'].items():
+            st.write(f"- **{file_type.title()}**: {count} files")
         
-        # Next steps
-        st.subheader("Next Steps")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("💾 Save Dataset"):
-                # Here you would save to your storage system
-                st.success("Dataset saved to workspace!")
-        
-        with col2:
-            if st.button("🔍 Start Analysis"):
-                # Navigate to analysis interface
-                st.info("Ready for analysis!")
+        # Show processed files
+        with st.expander("📁 Processed Files"):
+            for file in dataset_info['files']:
+                st.write(f"📄 {file['name']} ({file['size']/(1024*1024):.2f} MB)")
 
-# Streamlit interface
 def upload_page():
-    """Main upload page interface"""
-    st.title("📤 Data Upload & Ingestion")
+    """Main upload page"""
+    st.title("📤 Upload Dataset")
     
     pipeline = DataIngestionPipeline()
+    uploaded_dataset = pipeline.upload_interface()
     
-    # Upload interface
-    dataset_info = pipeline.upload_interface()
-    
-    if dataset_info:
-        # Store in session state for further processing
-        st.session_state.current_dataset = dataset_info
+    if uploaded_dataset:
+        st.session_state.current_dataset = uploaded_dataset
+        st.success("Dataset uploaded and ready for analysis!")
+        
+        # Show next steps
+        st.markdown("### Next Steps")
+        st.markdown("""
+        1. Go to the **Analysis** page to explore your data
+        2. Use the **AI Assistant** to ask questions about your dataset
+        3. Export your analysis results
+        """)

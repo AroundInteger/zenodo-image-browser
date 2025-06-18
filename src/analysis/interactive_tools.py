@@ -19,13 +19,37 @@ class InteractiveAnalysisTools:
             'mixed': ['Multi-modal Analysis', 'Custom Dashboard']
         }
     
+    def _get_file_type(self, file_info: Dict[str, Any]) -> str:
+        """Determine file type from Zenodo file structure"""
+        file_name = file_info.get('key', file_info.get('name', ''))
+        if not file_name:
+            return 'unknown'
+        
+        ext = file_name.split('.')[-1].lower() if '.' in file_name else ''
+        
+        # Image formats
+        if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp']:
+            return 'images'
+        # Data formats
+        elif ext in ['csv', 'json', 'xlsx', 'txt', 'h5', 'hdf5']:
+            return 'data'
+        # Video formats
+        elif ext in ['mp4', 'avi', 'mov', 'mkv']:
+            return 'video'
+        # Document formats
+        elif ext in ['pdf', 'docx', 'md']:
+            return 'documents'
+        else:
+            return 'unknown'
+    
     def create_analysis_interface(self, dataset_info: Dict[str, Any]):
         """Create analysis interface based on dataset content"""
         
         st.subheader("🔬 Interactive Analysis")
         
         # Determine available tools based on data types
-        file_types = set(file['type'] for file in dataset_info.get('files', []))
+        files = dataset_info.get('files', [])
+        file_types = set(self._get_file_type(file) for file in files)
         available_tools = []
         
         for file_type in file_types:
@@ -34,6 +58,10 @@ class InteractiveAnalysisTools:
         
         if len(file_types) > 1:
             available_tools.extend(self.tools['mixed'])
+        
+        # If no specific tools available, show general tools
+        if not available_tools:
+            available_tools = ['Data Explorer', 'File Browser']
         
         # Tool selection
         selected_tool = st.selectbox("Select Analysis Tool", available_tools)
@@ -51,14 +79,48 @@ class InteractiveAnalysisTools:
             self.time_series_analysis(dataset_info)
         elif selected_tool == 'Statistical Overview':
             self.statistical_overview(dataset_info)
+        elif selected_tool == 'File Browser':
+            self.file_browser(dataset_info)
         else:
             st.info(f"Tool '{selected_tool}' is under development")
+    
+    def file_browser(self, dataset_info: Dict[str, Any]):
+        """Simple file browser for any dataset"""
+        files = dataset_info.get('files', [])
+        
+        if not files:
+            st.warning("No files found in this dataset")
+            return
+        
+        st.markdown(f"### 📁 File Browser ({len(files)} files)")
+        
+        for file in files:
+            file_name = file.get('key', file.get('name', 'Unknown'))
+            file_size = file.get('size', 0)
+            file_url = file.get('links', {}).get('self', '')
+            file_type = self._get_file_type(file)
+            
+            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+            
+            with col1:
+                st.write(f"📄 {file_name}")
+            with col2:
+                st.write(f"{file_size / (1024*1024):.2f} MB")
+            with col3:
+                st.write(file_type.title())
+            with col4:
+                if file_url:
+                    if st.button("Preview", key=f"preview_{file_name}"):
+                        if file_type == 'images':
+                            st.image(file_url, caption=file_name)
+                        else:
+                            st.info(f"Preview not available for {file_type} files")
     
     def image_gallery(self, dataset_info: Dict[str, Any]):
         """Interactive image gallery with filtering and sorting"""
         
         # Get image files
-        image_files = [f for f in dataset_info['files'] if f['type'] == 'images']
+        image_files = [f for f in dataset_info['files'] if self._get_file_type(f) == 'images']
         
         if not image_files:
             st.warning("No image files found in this dataset")
@@ -80,9 +142,9 @@ class InteractiveAnalysisTools:
         
         # Sort images
         if sort_by == "Size":
-            image_files.sort(key=lambda x: x['size'], reverse=True)
+            image_files.sort(key=lambda x: x.get('size', 0), reverse=True)
         elif sort_by == "Name":
-            image_files.sort(key=lambda x: x['name'])
+            image_files.sort(key=lambda x: x.get('key', x.get('name', '')))
         
         # Display gallery
         for i in range(0, len(image_files), images_per_row):
@@ -91,23 +153,25 @@ class InteractiveAnalysisTools:
             for j, col in enumerate(cols):
                 if i + j < len(image_files):
                     file_info = image_files[i + j]
+                    file_name = file_info.get('key', file_info.get('name', ''))
+                    file_url = file_info.get('links', {}).get('self', '')
                     
                     with col:
-                        # Display image (placeholder - in real implementation, load from storage)
-                        st.image(
-                            f"https://via.placeholder.com/300x200?text={file_info['name'][:10]}",
-                            caption=file_info['name'],
-                            use_column_width=True
-                        )
+                        # Display image
+                        if file_url:
+                            st.image(file_url, caption=file_name, use_column_width=True)
+                        else:
+                            st.image(
+                                f"https://via.placeholder.com/300x200?text={file_name[:10]}",
+                                caption=file_name,
+                                use_column_width=True
+                            )
                         
-                        if show_metadata and 'metadata' in file_info:
-                            metadata = file_info['metadata']
-                            if 'dimensions' in metadata:
-                                st.caption(f"📐 {metadata['dimensions'][0]}×{metadata['dimensions'][1]}")
+                        if show_metadata:
                             if 'size' in file_info:
                                 st.caption(f"💾 {file_info['size']/1024:.1f} KB")
                         
-                        if st.button(f"Analyze", key=f"analyze_{file_info['name']}"):
+                        if st.button(f"Analyze", key=f"analyze_{file_name}"):
                             st.session_state.selected_image = file_info
                             st.rerun()
     
@@ -115,19 +179,17 @@ class InteractiveAnalysisTools:
         """Single image analysis with measurements and filters"""
         
         # Get image files
-        image_files = [f for f in dataset_info['files'] if f['type'] == 'images']
+        image_files = [f for f in dataset_info['files'] if self._get_file_type(f) == 'images']
         
         if not image_files:
             st.warning("No image files found in this dataset")
             return
         
         # Image selection
-        selected_image_name = st.selectbox(
-            "Select image to analyze",
-            [f['name'] for f in image_files]
-        )
+        image_names = [f.get('key', f.get('name', '')) for f in image_files]
+        selected_image_name = st.selectbox("Select image to analyze", image_names)
         
-        selected_image = next(f for f in image_files if f['name'] == selected_image_name)
+        selected_image = next(f for f in image_files if f.get('key', f.get('name', '')) == selected_image_name)
         
         col1, col2 = st.columns([2, 1])
         
@@ -140,11 +202,15 @@ class InteractiveAnalysisTools:
                 ["Basic Info", "Color Analysis", "Edge Detection", "Pattern Analysis"]
             )
             
-            # Placeholder image display
-            st.image(
-                f"https://via.placeholder.com/600x400?text={selected_image['name'][:15]}",
-                caption=f"Analyzing: {selected_image['name']}"
-            )
+            # Display image
+            file_url = selected_image.get('links', {}).get('self', '')
+            if file_url:
+                st.image(file_url, caption=f"Analyzing: {selected_image_name}")
+            else:
+                st.image(
+                    f"https://via.placeholder.com/600x400?text={selected_image_name[:15]}",
+                    caption=f"Analyzing: {selected_image_name}"
+                )
             
             # Analysis results based on type
             if analysis_type == "Basic Info":
@@ -181,31 +247,23 @@ class InteractiveAnalysisTools:
         """Interactive data exploration for CSV/tabular data"""
         
         # Get data files
-        data_files = [f for f in dataset_info['files'] if f['type'] == 'data']
+        data_files = [f for f in dataset_info['files'] if self._get_file_type(f) == 'data']
         
         if not data_files:
             st.warning("No data files found in this dataset")
             return
         
         # File selection
-        selected_file_name = st.selectbox(
-            "Select data file",
-            [f['name'] for f in data_files]
-        )
+        data_file_names = [f.get('key', f.get('name', '')) for f in data_files]
+        selected_file_name = st.selectbox("Select data file", data_file_names)
         
-        selected_file = next(f for f in data_files if f['name'] == selected_file_name)
+        selected_file = next(f for f in data_files if f.get('key', f.get('name', '')) == selected_file_name)
         
-        st.markdown(f"### 📊 Data Explorer: {selected_file['name']}")
+        st.markdown(f"### 📊 Data Explorer: {selected_file_name}")
         
         # Create sample data for demonstration
-        if 'metadata' in selected_file and 'columns' in selected_file['metadata']:
-            # Use actual metadata if available
-            n_rows = selected_file['metadata'].get('rows', 100)
-            columns = selected_file['metadata']['column_names']
-        else:
-            # Generate sample data
-            n_rows = 100
-            columns = ['time', 'pressure', 'temperature', 'flow_rate']
+        n_rows = 100
+        columns = ['time', 'pressure', 'temperature', 'flow_rate']
         
         # Generate sample DataFrame
         np.random.seed(42)
@@ -282,29 +340,35 @@ class InteractiveAnalysisTools:
             else:
                 st.dataframe(df, use_container_width=True)
     
+    def timelapse_viewer(self, dataset_info: Dict[str, Any]):
+        """Time-lapse viewer for image sequences"""
+        st.info("Time-lapse viewer feature coming soon!")
+    
+    def time_series_analysis(self, dataset_info: Dict[str, Any]):
+        """Time series analysis tools"""
+        st.info("Time series analysis feature coming soon!")
+    
+    def statistical_overview(self, dataset_info: Dict[str, Any]):
+        """Statistical overview of dataset"""
+        st.info("Statistical overview feature coming soon!")
+    
     def display_basic_image_info(self, image_info: Dict[str, Any]):
         """Display basic image information"""
-        metadata = image_info.get('metadata', {})
+        file_name = image_info.get('key', image_info.get('name', ''))
+        file_size = image_info.get('size', 0)
         
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("**File Information**")
-            st.write(f"📁 **Name:** {image_info['name']}")
-            st.write(f"💾 **Size:** {image_info['size']/1024:.1f} KB")
-            if 'checksum' in image_info:
-                st.write(f"🔑 **Checksum:** {image_info['checksum'][:8]}...")
+            st.write(f"📁 **Name:** {file_name}")
+            st.write(f"💾 **Size:** {file_size/1024:.1f} KB")
         
         with col2:
             st.markdown("**Image Properties**")
-            if 'dimensions' in metadata:
-                dims = metadata['dimensions']
-                st.write(f"📐 **Dimensions:** {dims[0]} × {dims[1]} pixels")
-                st.write(f"📊 **Aspect Ratio:** {dims[0]/dims[1]:.2f}")
-            if 'mode' in metadata:
-                st.write(f"🎨 **Color Mode:** {metadata['mode']}")
-            if 'format' in metadata:
-                st.write(f"📋 **Format:** {metadata['format']}")
+            st.write(f"📐 **Dimensions:** Unknown (would be extracted from actual image)")
+            st.write(f"🎨 **Color Mode:** Unknown")
+            st.write(f"📋 **Format:** {file_name.split('.')[-1].upper() if '.' in file_name else 'Unknown'}")
     
     def display_color_analysis(self, image_info: Dict[str, Any]):
         """Display color analysis results"""
