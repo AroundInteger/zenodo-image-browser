@@ -5,12 +5,18 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 import requests
-import cv2
 from typing import Dict, List, Any, Optional
 import requests
 from PIL import Image
 import io
 import matplotlib.pyplot as plt
+
+# Try to import cv2, but make it optional for deployment
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 class InteractiveAnalysisTools:
     """Interactive analysis tools for different data types"""
@@ -572,6 +578,12 @@ class InteractiveAnalysisTools:
         """Display real edge detection results"""
         st.markdown("**Edge Detection Results**")
         
+        # Check if cv2 is available
+        if not CV2_AVAILABLE:
+            st.warning("OpenCV is not available. Showing simulated edge detection results.")
+            self._display_simulated_edge_detection(image_info)
+            return
+        
         # Get image URL
         file_url = image_info.get('links', {}).get('self', '')
         if not file_url:
@@ -664,19 +676,60 @@ class InteractiveAnalysisTools:
         except Exception as e:
             st.error(f"Error during edge detection: {str(e)}")
             st.info("Falling back to simulated results...")
-            
-            # Fallback to simulated results
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Edges Detected", "1,247", delta="Simulated")
-            with col2:
-                st.metric("Edge Density", "12.3%", delta="Simulated")
-            
-            # Placeholder for edge image
-            st.image(
-                "https://via.placeholder.com/400x300?text=Edge+Detection+Result",
-                caption="Edge Detection Result (Simulated)"
-            )
+            self._display_simulated_edge_detection(image_info)
+    
+    def _display_simulated_edge_detection(self, image_info: Dict[str, Any]):
+        """Display simulated edge detection results when cv2 is not available"""
+        st.markdown("**Simulated Edge Detection Results**")
+        
+        # Get image URL for display
+        file_url = image_info.get('links', {}).get('self', '')
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Edges Detected", "1,247", delta="Simulated")
+            st.metric("Edge Density", "12.3%", delta="Simulated")
+            st.metric("Contours Found", "156", delta="Simulated")
+        
+        with col2:
+            if file_url:
+                try:
+                    response = requests.get(file_url)
+                    if response.status_code == 200:
+                        image = Image.open(io.BytesIO(response.content))
+                        st.image(image, caption="Original Image", use_container_width=True)
+                except:
+                    st.image(
+                        "https://via.placeholder.com/400x300?text=Original+Image",
+                        caption="Original Image"
+                    )
+            else:
+                st.image(
+                    "https://via.placeholder.com/400x300?text=Original+Image",
+                    caption="Original Image"
+                )
+        
+        # Display simulated edge image
+        st.markdown("#### Edge Detection Result (Simulated)")
+        st.image(
+            "https://via.placeholder.com/400x300?text=Edge+Detection+Result",
+            caption="Edge Detection Result (Simulated)"
+        )
+        
+        # Simulated edge analysis details
+        st.markdown("#### Edge Analysis Details (Simulated)")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Image Width", "800 px", delta="Simulated")
+            st.metric("Image Height", "600 px", delta="Simulated")
+        with col2:
+            st.metric("Total Pixels", "480,000", delta="Simulated")
+            st.metric("Edge Pixels", "59,040", delta="Simulated")
+        with col3:
+            st.metric("Edge Ratio", "12.3%", delta="Simulated")
+            st.metric("Contour Count", "156", delta="Simulated")
+        
+        st.info("This is a simulated result because OpenCV is not available in this environment.")
     
     def display_pattern_analysis(self, image_info: Dict[str, Any]):
         """Display pattern analysis results"""
