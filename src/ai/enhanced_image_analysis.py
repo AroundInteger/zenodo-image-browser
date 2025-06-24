@@ -42,9 +42,7 @@ class EnhancedImageAnalyzer:
         
         # Check if cv2 is available
         if not CV2_AVAILABLE:
-            import streamlit as st
-            st.warning("OpenCV not available. Some advanced image processing features will be disabled.")
-            return self._analyze_image_fallback(image_path, analysis_types)
+            return {"error": "OpenCV is not available. Please contact support."}
         
         # Load image
         image = cv2.imread(image_path)
@@ -92,31 +90,6 @@ class EnhancedImageAnalyzer:
     def _basic_analysis(self, image_rgb: np.ndarray, image_gray: np.ndarray) -> Dict[str, Any]:
         """Basic image analysis"""
         
-        if not CV2_AVAILABLE:
-            # Fallback using numpy and PIL
-            brightness = float(np.mean(image_gray))
-            contrast = float(np.std(image_gray))
-            
-            return {
-                "color_statistics": {
-                    "rgb": {
-                        "mean": [float(np.mean(image_rgb[:, :, i])) for i in range(3)],
-                        "std": [float(np.std(image_rgb[:, :, i])) for i in range(3)],
-                        "min": [float(np.min(image_rgb[:, :, i])) for i in range(3)],
-                        "max": [float(np.max(image_rgb[:, :, i])) for i in range(3)]
-                    },
-                    "note": "HSV and LAB analysis not available without OpenCV"
-                },
-                "histograms": {
-                    "gray": np.histogram(image_gray, bins=256, range=(0, 256))[0].tolist(),
-                    "rgb": [np.histogram(image_rgb[:, :, i], bins=256, range=(0, 256))[0].tolist() for i in range(3)],
-                    "note": "Using numpy histogram instead of OpenCV"
-                },
-                "brightness": brightness,
-                "contrast": contrast,
-                "dynamic_range": float(np.max(image_gray) - np.min(image_gray))
-            }
-        
         # Color analysis with OpenCV
         hsv = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2HSV)
         lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
@@ -159,70 +132,6 @@ class EnhancedImageAnalyzer:
     
     def _morphological_analysis(self, image_gray: np.ndarray) -> Dict[str, Any]:
         """Morphological analysis for particle/grain detection"""
-        
-        if not CV2_AVAILABLE:
-            # Fallback using scikit-image
-            from skimage.filters import threshold_otsu
-            from skimage.morphology import binary_closing, binary_opening
-            
-            # Apply thresholding using scikit-image
-            threshold = threshold_otsu(image_gray)
-            binary = image_gray > threshold
-            
-            # Remove noise using scikit-image
-            binary_cleaned = binary_closing(binary_opening(binary))
-            
-            # Label connected components
-            labeled_image = measure.label(binary_cleaned)
-            regions = measure.regionprops(labeled_image)
-            
-            # Analyze particles/grains
-            particle_data = []
-            for region in regions:
-                if region.area > 50:  # Filter small noise
-                    particle_data.append({
-                        "area": region.area,
-                        "perimeter": region.perimeter,
-                        "centroid": region.centroid,
-                        "bbox": region.bbox,
-                        "eccentricity": region.eccentricity,
-                        "solidity": region.solidity,
-                        "circularity": (4 * np.pi * region.area) / (region.perimeter ** 2) if region.perimeter > 0 else 0
-                    })
-            
-            # Calculate statistics
-            if particle_data:
-                areas = [p["area"] for p in particle_data]
-                perimeters = [p["perimeter"] for p in particle_data]
-                circularities = [p["circularity"] for p in particle_data]
-                
-                particle_stats = {
-                    "total_particles": len(particle_data),
-                    "area_stats": {
-                        "mean": float(np.mean(areas)),
-                        "std": float(np.std(areas)),
-                        "min": float(np.min(areas)),
-                        "max": float(np.max(areas)),
-                        "median": float(np.median(areas))
-                    },
-                    "perimeter_stats": {
-                        "mean": float(np.mean(perimeters)),
-                        "std": float(np.std(perimeters))
-                    },
-                    "circularity_stats": {
-                        "mean": float(np.mean(circularities)),
-                        "std": float(np.std(circularities))
-                    }
-                }
-            else:
-                particle_stats = {"total_particles": 0}
-            
-            return {
-                "particle_analysis": particle_stats,
-                "particle_details": particle_data,
-                "porosity": 1 - (np.sum(binary_cleaned) / (binary_cleaned.shape[0] * binary_cleaned.shape[1])),
-                "note": "Using scikit-image instead of OpenCV"
-            }
         
         # Apply thresholding with OpenCV
         _, binary = cv2.threshold(image_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -285,34 +194,6 @@ class EnhancedImageAnalyzer:
     
     def _pattern_analysis(self, image_gray: np.ndarray) -> Dict[str, Any]:
         """Pattern and texture analysis"""
-        
-        if not CV2_AVAILABLE:
-            # Fallback using scikit-image
-            edges_sobel = filters.sobel(image_gray)
-            
-            # Texture analysis using Local Binary Patterns (simplified)
-            texture_features = self._calculate_texture_features(image_gray)
-            
-            # Orientation analysis
-            orientation_map = self._calculate_orientation_map(image_gray)
-            
-            # Fractal analysis (simplified box-counting)
-            fractal_dimension = self._estimate_fractal_dimension(image_gray)
-            
-            return {
-                "edge_analysis": {
-                    "sobel_edges": {
-                        "mean_strength": float(np.mean(edges_sobel)),
-                        "max_strength": float(np.max(edges_sobel)),
-                        "edge_density": float(np.sum(edges_sobel > 0.1) / edges_sobel.size)
-                    },
-                    "note": "Canny edge detection not available without OpenCV"
-                },
-                "texture_features": texture_features,
-                "orientation_analysis": orientation_map,
-                "fractal_dimension": fractal_dimension,
-                "note": "Using scikit-image instead of OpenCV"
-            }
         
         # Edge detection with OpenCV
         edges_sobel = filters.sobel(image_gray)
@@ -521,39 +402,6 @@ class EnhancedImageAnalyzer:
             "periodicity_score": float(np.std(magnitude_spectrum)),
             "crystal_symmetry": "unknown"  # Would need more sophisticated analysis
         }
-
-    def _analyze_image_fallback(self, image_path: str, analysis_types: List[str] = None) -> Dict[str, Any]:
-        """Fallback analysis when cv2 is not available"""
-        try:
-            # Use PIL for basic analysis
-            image = Image.open(image_path)
-            image_array = np.array(image)
-            
-            # Basic info
-            width, height = image.size
-            channels = len(image.getbands())
-            
-            results = {
-                "image_info": {
-                    "dimensions": {"width": width, "height": height, "channels": channels},
-                    "aspect_ratio": width / height,
-                    "total_pixels": width * height,
-                    "memory_size_mb": (width * height * channels) / (1024 * 1024)
-                },
-                "analyses": {
-                    "basic": {
-                        "brightness": float(np.mean(image_array)),
-                        "contrast": float(np.std(image_array)),
-                        "dynamic_range": float(np.max(image_array) - np.min(image_array)),
-                        "note": "Limited analysis due to OpenCV unavailability"
-                    }
-                }
-            }
-            
-            return results
-            
-        except Exception as e:
-            return {"error": f"Could not analyze image: {str(e)}"}
 
 # MCP Tool Integration
 def create_enhanced_image_analysis_tools() -> List[Dict[str, Any]]:
