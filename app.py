@@ -19,7 +19,20 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 from datetime import datetime
-import openai
+# Try to import AI libraries, but make them optional
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("OpenAI module not available. OpenAI AI Assistant will be disabled.")
+
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+    print("Ollama module not available. Local AI Assistant will be disabled.")
 
 # Set page config
 st.set_page_config(
@@ -224,28 +237,110 @@ elif page == "Analysis":
         # Add AI chat interface
         st.markdown("---")
         st.subheader("🤖 AI Assistant")
-        api_key = st.sidebar.text_input("OpenAI API Key", type="password", help="For AI Assistant in Analysis section")
-        if api_key:
-            openai.api_key = api_key
-            user_input = st.text_input("Ask me anything about your data:")
-            if st.button("Ask") and user_input:
-                # Prepare context: file names/types summary
-                dataset = st.session_state.current_dataset
-                files = dataset.get('files', [])
-                file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
-                context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
-                prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
-                with st.spinner("Thinking..."):
-                    try:
-                        response = openai.ChatCompletion.create(
-                            model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": prompt}]
-                        )
-                        st.markdown(response.choices[0].message["content"])
-                    except Exception as e:
-                        st.error(f"OpenAI API error: {e}")
+        
+        # Check if any AI providers are available
+        if not OPENAI_AVAILABLE and not OLLAMA_AVAILABLE:
+            st.warning("⚠️ No AI modules available. AI Assistant is disabled.")
+            st.info("To enable AI Assistant, install: `pip install openai` or `pip install ollama`")
         else:
-            st.info("Please enter your OpenAI API key in the sidebar Settings to use the AI Assistant.")
+            # AI Provider Selection
+            ai_providers = []
+            if OPENAI_AVAILABLE:
+                ai_providers.append("OpenAI GPT")
+            if OLLAMA_AVAILABLE:
+                ai_providers.append("Local Ollama")
+            
+            selected_provider = st.selectbox(
+                "Choose AI Provider:", 
+                ai_providers,
+                help="OpenAI requires API key and billing. Ollama runs locally for free."
+            )
+            
+            # OpenAI Configuration
+            if selected_provider == "OpenAI GPT" and OPENAI_AVAILABLE:
+                api_key = st.sidebar.text_input("OpenAI API Key", type="password", help="For OpenAI AI Assistant")
+                if api_key:
+                    user_input = st.text_input("Ask me anything about your data:")
+                    if st.button("Ask OpenAI") and user_input:
+                        # Prepare context: file names/types summary
+                        dataset = st.session_state.current_dataset
+                        files = dataset.get('files', [])
+                        file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
+                        context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
+                        prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
+                        with st.spinner("OpenAI is thinking..."):
+                            try:
+                                client = openai.OpenAI(api_key=api_key)
+                                response = client.chat.completions.create(
+                                    model="gpt-3.5-turbo",
+                                    messages=[{"role": "user", "content": prompt}]
+                                )
+                                st.markdown(response.choices[0].message.content)
+                            except Exception as e:
+                                error_msg = str(e)
+                                if "insufficient_quota" in error_msg or "429" in error_msg:
+                                    st.error("🚫 OpenAI API quota exceeded. This usually means:")
+                                    st.markdown("""
+                                    - You've used up your free $5 credit
+                                    - You need to add billing information to your OpenAI account
+                                    - You've hit rate limits for your current plan
+                                    
+                                    **Solutions:**
+                                    - Visit [OpenAI Platform](https://platform.openai.com/account/billing) to add billing info
+                                    - Check your usage at [OpenAI Usage](https://platform.openai.com/usage)
+                                    - Try switching to Local Ollama (free and offline)
+                                    """)
+                                else:
+                                    st.error(f"OpenAI API error: {error_msg}")
+                else:
+                    st.info("Please enter your OpenAI API key in the sidebar to use OpenAI.")
+            
+            # Ollama Configuration
+            elif selected_provider == "Local Ollama" and OLLAMA_AVAILABLE:
+                # Model selection for Ollama
+                available_models = ["llama2", "mistral", "codellama", "llama2:7b", "llama2:13b"]
+                selected_model = st.selectbox(
+                    "Choose Ollama Model:", 
+                    available_models,
+                    help="Larger models are more capable but slower. Llama2 7B is a good balance."
+                )
+                
+                # Check if model is available
+                try:
+                    models = ollama.list()
+                    installed_models = [model['name'] for model in models['models']]
+                    if selected_model not in installed_models:
+                        st.warning(f"⚠️ Model '{selected_model}' not installed.")
+                        if st.button(f"Install {selected_model}"):
+                            with st.spinner(f"Installing {selected_model} (this may take several minutes)..."):
+                                try:
+                                    ollama.pull(selected_model)
+                                    st.success(f"✅ {selected_model} installed successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Failed to install {selected_model}: {e}")
+                    else:
+                        st.success(f"✅ {selected_model} is ready to use!")
+                except Exception as e:
+                    st.error(f"Failed to check Ollama models: {e}")
+                    st.info("Make sure Ollama is running. Install from: https://ollama.ai")
+                
+                # Chat interface for Ollama
+                user_input = st.text_input("Ask me anything about your data:")
+                if st.button("Ask Local AI") and user_input:
+                    # Prepare context: file names/types summary
+                    dataset = st.session_state.current_dataset
+                    files = dataset.get('files', [])
+                    file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
+                    context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
+                    prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
+                    with st.spinner("Local AI is thinking..."):
+                        try:
+                            response = ollama.chat(model=selected_model, messages=[{"role": "user", "content": prompt}])
+                            st.markdown(response['message']['content'])
+                        except Exception as e:
+                            st.error(f"Ollama error: {e}")
+                            st.info("Make sure Ollama is running and the model is installed.")
     else:
         st.info("Please load a dataset first to access analysis tools.")
         st.markdown("""
