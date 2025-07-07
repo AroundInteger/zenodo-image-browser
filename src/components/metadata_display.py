@@ -185,21 +185,18 @@ def display_file_preview(file_info: Dict[Any, Any]) -> None:
             # Download individual file from ZIP
             if st.button("📄 Download File", key=f"download_file_{file_name}"):
                 try:
-                    # Find the parent ZIP file
-                    from src.api.zenodo import ZenodoAPI
-                    zenodo = ZenodoAPI()
-                    
-                    # This would need to be implemented to extract and download individual files
-                    st.info("Individual file download from ZIP coming soon!")
+                    # We need the dataset context to find the parent ZIP file
+                    # For now, show a message that this requires the full dataset context
+                    st.info("📦 To download individual files from ZIP archives, please use the 'File Browser' tool in the Analysis section.")
                 except Exception as e:
                     st.error(f"Download failed: {e}")
             
             # Download original ZIP
             if st.button("📦 Download ZIP", key=f"download_zip_{file_name}"):
                 try:
-                    # Find the parent ZIP file URL
-                    # This would need the dataset context to find the ZIP file
-                    st.info("ZIP download coming soon!")
+                    # We need the dataset context to find the parent ZIP file
+                    # For now, show a message that this requires the full dataset context
+                    st.info("📦 To download ZIP archives, please use the 'File Browser' tool in the Analysis section.")
                 except Exception as e:
                     st.error(f"ZIP download failed: {e}")
         else:

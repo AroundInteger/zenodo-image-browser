@@ -61,6 +61,56 @@ class ZenodoAPI:
             print(f"Error getting dataset: {e}")
             return None
 
+    def _extract_zip_recursively(self, zip_url: str, zip_source: str, zip_path: str = "") -> List[Dict]:
+        """
+        Recursively extract files from ZIP archives, handling nested ZIPs.
+        """
+        extracted_files = []
+        try:
+            response = requests.get(zip_url, headers=self.headers)
+            response.raise_for_status()
+            
+            with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                for zipinfo in zf.infolist():
+                    if zipinfo.is_dir():
+                        continue
+                    
+                    current_path = f"{zip_path}/{zipinfo.filename}" if zip_path else zipinfo.filename
+                    full_key = f"{zip_source}/{current_path}"
+                    
+                    # Check if this is a nested ZIP file
+                    if zipinfo.filename.lower().endswith('.zip'):
+                        print(f"    Found nested ZIP: {current_path}")
+                        # Extract the nested ZIP content
+                        with zf.open(zipinfo.filename) as nested_zip_file:
+                            nested_zip_content = nested_zip_file.read()
+                            with zipfile.ZipFile(io.BytesIO(nested_zip_content)) as nested_zf:
+                                for nested_info in nested_zf.infolist():
+                                    if nested_info.is_dir():
+                                        continue
+                                    nested_path = f"{current_path}/{nested_info.filename}"
+                                    nested_full_key = f"{zip_source}/{nested_path}"
+                                    extracted_files.append({
+                                        "key": nested_full_key,
+                                        "from_zip": True,
+                                        "zip_source": zip_source,
+                                        "zip_inner_path": nested_path,
+                                        "size": nested_info.file_size,
+                                    })
+                    else:
+                        # Regular file
+                        extracted_files.append({
+                            "key": full_key,
+                            "from_zip": True,
+                            "zip_source": zip_source,
+                            "zip_inner_path": current_path,
+                            "size": zipinfo.file_size,
+                        })
+        except Exception as e:
+            print(f"Error extracting ZIP file {zip_source}: {e}")
+        
+        return extracted_files
+
     def get_files(self, record_id: str) -> List[Dict]:
         """
         Get files associated with a dataset, extracting ZIP archives in memory.
@@ -72,30 +122,21 @@ class ZenodoAPI:
         dataset = self.get_dataset(record_id)
         files = []
         if dataset and "files" in dataset:
+            zip_files = [f for f in dataset["files"] if f["key"].lower().endswith(".zip")]
+            if zip_files:
+                print(f"Found {len(zip_files)} ZIP files to extract...")
+            
             for file_info in dataset["files"]:
                 files.append(file_info)
                 # Check for ZIP files by extension
                 if file_info["key"].lower().endswith(".zip"):
+                    print(f"Extracting {file_info['key']}...")
                     zip_url = file_info["links"]["self"]
-                    try:
-                        response = requests.get(zip_url, headers=self.headers)
-                        response.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
-                            for zipinfo in zf.infolist():
-                                if zipinfo.is_dir():
-                                    continue
-                                # Only include supported file types (e.g., images, .mat, etc.)
-                                # For now, include all files
-                                files.append({
-                                    "key": f"{file_info['key']}/{zipinfo.filename}",
-                                    "from_zip": True,
-                                    "zip_source": file_info["key"],
-                                    "zip_inner_path": zipinfo.filename,
-                                    "size": zipinfo.file_size,
-                                    # No direct download link, but can be extracted on demand
-                                })
-                    except Exception as e:
-                        print(f"Error extracting ZIP file {file_info['key']}: {e}")
+                    extracted = self._extract_zip_recursively(zip_url, file_info["key"])
+                    print(f"  Found {len(extracted)} files in {file_info['key']} (including nested)")
+                    files.extend(extracted)
+        
+        print(f"Total files after extraction: {len(files)}")
         return files
 
     def download_file(self, file_url: str, save_path: str) -> bool:

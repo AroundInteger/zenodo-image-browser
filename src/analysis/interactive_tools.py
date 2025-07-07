@@ -38,7 +38,7 @@ class InteractiveAnalysisTools:
         ext = file_name.split('.')[-1].lower() if '.' in file_name else ''
         
         # Image formats
-        if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp']:
+        if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'tif', 'webp']:
             return 'images'
         # Data formats
         elif ext in ['csv', 'json', 'xlsx', 'txt', 'h5', 'hdf5']:
@@ -71,7 +71,28 @@ class InteractiveAnalysisTools:
         
         # Determine available tools based on data types
         files = dataset_info.get('files', [])
-        file_types = set(self._get_file_type(file) for file in files)
+        
+        # Debug: Check file types more thoroughly
+        file_types = set()
+        image_files = []
+        data_files = []
+        
+        for file in files:
+            file_type = self._get_file_type(file)
+            file_types.add(file_type)
+            if file_type == 'images':
+                image_files.append(file.get('key', ''))
+            elif file_type == 'data':
+                data_files.append(file.get('key', ''))
+        
+        # Debug: Show detailed breakdown
+        st.write(f"Debug: Total files: {len(files)}")
+        st.write(f"Debug: Detected file types: {file_types}")
+        st.write(f"Debug: Image files found: {len(image_files)}")
+        if image_files:
+            st.write(f"Debug: Sample image files: {image_files[:3]}")
+        st.write(f"Debug: Data files found: {len(data_files)}")
+        
         available_tools = []
         
         for file_type in file_types:
@@ -84,6 +105,9 @@ class InteractiveAnalysisTools:
         # If no specific tools available, show general tools
         if not available_tools:
             available_tools = ['Data Explorer', 'File Browser']
+        
+        # Debug: Show what tools are available
+        st.write(f"Debug: Available tools: {available_tools}")
         
         # Tool selection
         selected_tool = st.selectbox("Select Analysis Tool", available_tools)
@@ -125,6 +149,7 @@ class InteractiveAnalysisTools:
             zip_source = file.get('zip_source')
             zip_inner_path = file.get('zip_inner_path')
             
+            # File information row
             col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
             
             with col1:
@@ -153,70 +178,76 @@ class InteractiveAnalysisTools:
                     except Exception as e:
                         st.error(f"Could not load image: {e}")
                         st.info("You can still download the file using the button below.")
-        
-        # Context-aware download actions
-        if from_zip:
-            # For files from ZIPs, provide two options
-            st.markdown("**📦 ZIP Actions:**")
             
-            # Download individual file from ZIP
-            if st.button("📄 Download File", key=f"download_file_{file_name}"):
-                try:
-                    # Extract and download the individual file from ZIP
-                    parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
-                    if parent_zip:
-                        zip_url = parent_zip.get('links', {}).get('self', '')
-                        response = requests.get(zip_url)
-                        response.raise_for_status()
-                        
-                        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
-                            with zf.open(zip_inner_path) as file:
-                                file_content = file.read()
+            # Download actions row - separate from file info for better visibility
+            if from_zip:
+                # For files from ZIPs, provide two options
+                st.markdown("**📦 ZIP Actions:**")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    # Download individual file from ZIP
+                    if st.button("📄 Download File", key=f"download_file_{file_name}"):
+                        try:
+                            # Extract and download the individual file from ZIP
+                            parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
+                            if parent_zip:
+                                zip_url = parent_zip.get('links', {}).get('self', '')
+                                response = requests.get(zip_url)
+                                response.raise_for_status()
                                 
+                                with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                                    with zf.open(zip_inner_path) as file:
+                                        file_content = file.read()
+                                        
+                                st.download_button(
+                                    "Click to download extracted file",
+                                    data=file_content,
+                                    file_name=zip_inner_path.split('/')[-1],  # Just the filename, not the path
+                                    key=f"dl_zip_file_{file_name}",
+                                    use_container_width=True
+                                )
+                            else:
+                                st.error("Parent ZIP file not found")
+                        except Exception as e:
+                            st.error(f"Could not download file from ZIP: {e}")
+                
+                with col2:
+                    # Download original ZIP
+                    if st.button("📦 Download ZIP", key=f"download_zip_{file_name}"):
+                        try:
+                            # Find and download the parent ZIP file
+                            parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
+                            if parent_zip:
+                                zip_url = parent_zip.get('links', {}).get('self', '')
+                                response = requests.get(zip_url)
+                                st.download_button(
+                                    "Click to download ZIP archive",
+                                    data=response.content,
+                                    file_name=zip_source,
+                                    key=f"dl_zip_archive_{file_name}",
+                                    use_container_width=True
+                                )
+                            else:
+                                st.error("Parent ZIP file not found")
+                        except Exception as e:
+                            st.error(f"Could not download ZIP: {e}")
+            else:
+                # Standard download for regular files
+                if st.button("📥 Download", key=f"download_{file_name}"):
+                    try:
+                        response = requests.get(file_url)
                         st.download_button(
-                            "Click to download extracted file",
-                            data=file_content,
-                            file_name=zip_inner_path.split('/')[-1],  # Just the filename, not the path
-                            key=f"dl_zip_file_{file_name}",
-                            use_container_width=True
-                        )
-                    else:
-                        st.error("Parent ZIP file not found")
-                except Exception as e:
-                    st.error(f"Could not download file from ZIP: {e}")
-            
-            # Download original ZIP
-            if st.button("📦 Download ZIP", key=f"download_zip_{file_name}"):
-                try:
-                    # Find and download the parent ZIP file
-                    parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
-                    if parent_zip:
-                        zip_url = parent_zip.get('links', {}).get('self', '')
-                        response = requests.get(zip_url)
-                        st.download_button(
-                            "Click to download ZIP archive",
+                            "Click to download",
                             data=response.content,
-                            file_name=zip_source,
-                            key=f"dl_zip_archive_{file_name}",
+                            file_name=file_name,
                             use_container_width=True
                         )
-                    else:
-                        st.error("Parent ZIP file not found")
-                except Exception as e:
-                    st.error(f"Could not download ZIP: {e}")
-        else:
-            # Standard download for regular files
-            if st.button("📥 Download", key=f"download_{file_name}"):
-                try:
-                    response = requests.get(file_url)
-                    st.download_button(
-                        "Click to download",
-                        data=response.content,
-                        file_name=file_name,
-                        use_container_width=True
-                    )
-                except Exception as e:
-                    st.error(f"Could not download file: {e}")
+                    except Exception as e:
+                        st.error(f"Could not download file: {e}")
+            
+            # Add a separator between files for better readability
+            st.markdown("---")
     
     def image_gallery(self, dataset_info: Dict[str, Any]):
         """Interactive image gallery with filtering and sorting"""

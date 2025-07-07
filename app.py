@@ -127,6 +127,13 @@ if page == "Home":
 elif page == "Browse Datasets":
     st.title("Browse Datasets")
     
+    # Show current dataset info if available
+    if 'current_dataset' in st.session_state:
+        st.success(f"✅ Currently loaded: {st.session_state.current_dataset.get('metadata', {}).get('title', 'Unknown Dataset')}")
+        if st.button("Clear Current Dataset"):
+            del st.session_state.current_dataset
+            st.rerun()
+    
     # Tabs for different browse modes
     tab1, tab2 = st.tabs(["Zenodo Records", "Upload New Data"])
     
@@ -152,18 +159,38 @@ elif page == "Browse Datasets":
         record_id = st.text_input("Enter Zenodo Record ID", "7890690")
         
         if st.button("Load Record"):
-            with st.spinner("Loading dataset..."):
+            with st.spinner("Loading dataset and extracting ZIP files (this may take a few minutes for large datasets)..."):
                 dataset = zenodo_api.get_dataset(record_id)
                 if dataset:
+                    # Get files with ZIP extraction
+                    files = zenodo_api.get_files(record_id)
+                    
+                    # Count ZIP files for summary
+                    zip_files = [f for f in files if f.get('from_zip', False)]
+                    
+                    # Update dataset with extracted files (store ALL files, not just first 50)
+                    dataset['files'] = files
+                    
                     # Use the enhanced metadata display
                     display_dataset_metadata(dataset)
                     st.session_state.current_dataset = dataset
                     
                     # Show files with enhanced preview
-                    files = zenodo_api.get_files(record_id)
                     if files:
-                        st.subheader("Files")
-                        for file in files:
+                        st.subheader(f"Files ({len(files)} total)")
+                        
+                        # Show summary of file types
+                        if zip_files:
+                            st.info(f"📦 Found {len(zip_files)} files extracted from ZIP archives")
+                        
+                        # For large datasets, show a warning and limit display in main view only
+                        if len(files) > 10:
+                            st.warning(f"⚠️ Large dataset detected ({len(files)} files). Only showing first 10 files in this view. Use the Analysis tools to browse all {len(files)} files.")
+                            display_files = files[:10]
+                        else:
+                            display_files = files
+                        
+                        for file in display_files:
                             display_file_preview(file)
                 else:
                     st.error("Failed to load dataset. Please check the record ID and try again.")
@@ -208,6 +235,22 @@ elif page == "Analysis":
         - **Statistical Overview**: Comprehensive statistics
         - **AI Assistant**: Natural language queries about your data
         """)
+        
+        # Quick access to load a dataset
+        st.markdown("---")
+        st.subheader("Quick Load")
+        record_id = st.text_input("Enter Zenodo Record ID", "4134841")
+        if st.button("Load Dataset"):
+            with st.spinner("Loading dataset..."):
+                dataset = zenodo_api.get_dataset(record_id)
+                if dataset:
+                    files = zenodo_api.get_files(record_id)
+                    dataset['files'] = files
+                    st.session_state.current_dataset = dataset
+                    st.success("Dataset loaded! You can now use the Analysis tools.")
+                    st.rerun()
+                else:
+                    st.error("Failed to load dataset.")
 
 elif page == "Settings":
     st.title("Settings")
