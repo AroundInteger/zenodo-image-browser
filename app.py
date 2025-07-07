@@ -298,7 +298,7 @@ elif page == "Analysis":
             # Ollama Configuration
             elif selected_provider == "Local Ollama" and OLLAMA_AVAILABLE:
                 # Model selection for Ollama
-                available_models = ["llama2", "mistral", "codellama", "llama2:7b", "llama2:13b"]
+                available_models = ["llama2:7b", "llama2", "mistral", "codellama", "llama2:13b"]
                 selected_model = st.selectbox(
                     "Choose Ollama Model:", 
                     available_models,
@@ -308,7 +308,7 @@ elif page == "Analysis":
                 # Check if model is available
                 try:
                     models = ollama.list()
-                    installed_models = [model['name'] for model in models['models']]
+                    installed_models = [model.model for model in models.models]
                     if selected_model not in installed_models:
                         st.warning(f"⚠️ Model '{selected_model}' not installed.")
                         if st.button(f"Install {selected_model}"):
