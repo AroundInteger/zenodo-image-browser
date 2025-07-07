@@ -19,6 +19,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 from datetime import datetime
+import openai
 
 # Set page config
 st.set_page_config(
@@ -223,7 +224,28 @@ elif page == "Analysis":
         # Add AI chat interface
         st.markdown("---")
         st.subheader("🤖 AI Assistant")
-        create_ai_chat_interface(st.session_state.current_dataset)
+        api_key = st.sidebar.text_input("OpenAI API Key", type="password", help="For AI Assistant in Analysis section")
+        if api_key:
+            openai.api_key = api_key
+            user_input = st.text_input("Ask me anything about your data:")
+            if st.button("Ask") and user_input:
+                # Prepare context: file names/types summary
+                dataset = st.session_state.current_dataset
+                files = dataset.get('files', [])
+                file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
+                context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
+                prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
+                with st.spinner("Thinking..."):
+                    try:
+                        response = openai.ChatCompletion.create(
+                            model="gpt-3.5-turbo",
+                            messages=[{"role": "user", "content": prompt}]
+                        )
+                        st.markdown(response.choices[0].message["content"])
+                    except Exception as e:
+                        st.error(f"OpenAI API error: {e}")
+        else:
+            st.info("Please enter your OpenAI API key in the sidebar Settings to use the AI Assistant.")
     else:
         st.info("Please load a dataset first to access analysis tools.")
         st.markdown("""
