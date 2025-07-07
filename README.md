@@ -96,3 +96,13 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## New in 2025: ZIP Archive Support & Streamlit 1.40+
+
+- The app now automatically extracts and displays images from ZIP files in Zenodo records. You can preview and analyze images inside ZIPs just like regular files.
+- All image display now uses the new `use_container_width` parameter, fully compatible with Streamlit 1.40+.
+- To use the latest features, ensure you have Streamlit 1.40 or newer installed in your environment.
+
+### ZIP Workflow
+- When you open a Zenodo record, any ZIP files are automatically scanned and their contents listed alongside top-level files.
+- Selecting an image from inside a ZIP will extract and display it in memory, with full support for analysis tools.

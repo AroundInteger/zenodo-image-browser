@@ -10,6 +10,7 @@ import requests
 from PIL import Image
 import io
 import matplotlib.pyplot as plt
+import zipfile
 
 # Try to import cv2, but make it optional for deployment
 try:
@@ -50,6 +51,18 @@ class InteractiveAnalysisTools:
             return 'documents'
         else:
             return 'unknown'
+    
+    def _load_image_from_zip(self, zip_source_url, zip_inner_path):
+        """Download ZIP from URL, extract inner file, and return PIL Image object."""
+        try:
+            response = requests.get(zip_source_url)
+            response.raise_for_status()
+            with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                with zf.open(zip_inner_path) as file:
+                    return Image.open(file).copy()
+        except Exception as e:
+            st.error(f"Could not extract image from ZIP: {e}")
+            return None
     
     def create_analysis_interface(self, dataset_info: Dict[str, Any]):
         """Create analysis interface based on dataset content"""
@@ -108,6 +121,9 @@ class InteractiveAnalysisTools:
             file_size = file.get('size', 0)
             file_url = file.get('links', {}).get('self', '')
             file_type = self._get_file_type(file)
+            from_zip = file.get('from_zip', False)
+            zip_source = file.get('zip_source')
+            zip_inner_path = file.get('zip_inner_path')
             
             col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
             
@@ -118,13 +134,25 @@ class InteractiveAnalysisTools:
             with col3:
                 st.write(file_type.title())
             with col4:
-                if file_url:
-                    if st.button("Preview", key=f"preview_{file_name}"):
-                        try:
+                if (file_url or from_zip) and st.button("Preview", key=f"preview_{file_name}"):
+                    try:
+                        if from_zip:
+                            # Find the parent ZIP file's URL
+                            parent_zip = next((f for f in files if f.get('key') == zip_source), None)
+                            if parent_zip:
+                                zip_url = parent_zip.get('links', {}).get('self', '')
+                                image = self._load_image_from_zip(zip_url, zip_inner_path)
+                                if image:
+                                    st.image(image, caption=file_name, use_container_width=True)
+                                else:
+                                    st.error("Could not load image from ZIP archive.")
+                            else:
+                                st.error("Parent ZIP file not found.")
+                        else:
                             st.image(file_url, caption=file_name, use_container_width=True)
-                        except Exception as e:
-                            st.error(f"Could not load image: {e}")
-                            st.info("You can still download the file using the button below.")
+                    except Exception as e:
+                        st.error(f"Could not load image: {e}")
+                        st.info("You can still download the file using the button below.")
         
         # Download button
         if st.button("📥 Download", key=f"download_{file_name}"):
@@ -178,10 +206,32 @@ class InteractiveAnalysisTools:
                     file_info = image_files[i + j]
                     file_name = file_info.get('key', file_info.get('name', ''))
                     file_url = file_info.get('links', {}).get('self', '')
+                    from_zip = file_info.get('from_zip', False)
+                    zip_source = file_info.get('zip_source')
+                    zip_inner_path = file_info.get('zip_inner_path')
                     
                     with col:
                         # Display image
-                        if file_url:
+                        if from_zip:
+                            parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
+                            if parent_zip:
+                                zip_url = parent_zip.get('links', {}).get('self', '')
+                                image = self._load_image_from_zip(zip_url, zip_inner_path)
+                                if image:
+                                    st.image(image, caption=file_name, use_container_width=True)
+                                else:
+                                    st.image(
+                                        f"https://via.placeholder.com/300x200?text={file_name[:10]}",
+                                        caption=file_name,
+                                        use_container_width=True
+                                    )
+                            else:
+                                st.image(
+                                    f"https://via.placeholder.com/300x200?text={file_name[:10]}",
+                                    caption=file_name,
+                                    use_container_width=True
+                                )
+                        elif file_url:
                             st.image(file_url, caption=file_name, use_container_width=True)
                         else:
                             st.image(
@@ -227,12 +277,35 @@ class InteractiveAnalysisTools:
             
             # Display image
             file_url = selected_image.get('links', {}).get('self', '')
-            if file_url:
-                st.image(file_url, caption=f"Analyzing: {selected_image_name}")
+            from_zip = selected_image.get('from_zip', False)
+            zip_source = selected_image.get('zip_source')
+            zip_inner_path = selected_image.get('zip_inner_path')
+            if from_zip:
+                parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
+                if parent_zip:
+                    zip_url = parent_zip.get('links', {}).get('self', '')
+                    image = self._load_image_from_zip(zip_url, zip_inner_path)
+                    if image:
+                        st.image(image, caption=f"Analyzing: {selected_image_name}", use_container_width=True)
+                    else:
+                        st.image(
+                            f"https://via.placeholder.com/600x400?text={selected_image_name[:15]}",
+                            caption=f"Analyzing: {selected_image_name}",
+                            use_container_width=True
+                        )
+                else:
+                    st.image(
+                        f"https://via.placeholder.com/600x400?text={selected_image_name[:15]}",
+                        caption=f"Analyzing: {selected_image_name}",
+                        use_container_width=True
+                    )
+            elif file_url:
+                st.image(file_url, caption=f"Analyzing: {selected_image_name}", use_container_width=True)
             else:
                 st.image(
                     f"https://via.placeholder.com/600x400?text={selected_image_name[:15]}",
-                    caption=f"Analyzing: {selected_image_name}"
+                    caption=f"Analyzing: {selected_image_name}",
+                    use_container_width=True
                 )
             
             # Analysis results based on type

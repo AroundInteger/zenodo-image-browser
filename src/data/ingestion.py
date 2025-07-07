@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 import hashlib
 import json
 from datetime import datetime
+import scipy.io as sio
 
 class DataIngestionPipeline:
     """Handles upload, validation, and metadata extraction for new datasets"""
