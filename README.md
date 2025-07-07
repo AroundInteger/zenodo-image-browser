@@ -10,6 +10,26 @@ A centralized, web-based platform for researchers to explore, analyze, and bench
 - Generating analysis reports
 - Guiding users through data experiments, even across disciplines
 
+## 🚀 Latest Features (2025)
+
+### 🤖 AI-Powered Analysis
+- **Dual AI Support**: Choose between OpenAI GPT (cloud) and Local Ollama (free, offline)
+- **Smart Model Management**: Automatic model detection and one-click installation
+- **Scientific Context**: AI understands your dataset structure and provides intelligent analysis
+- **Natural Language Queries**: Ask questions about your data in plain English
+
+### 📦 Advanced ZIP Archive Support
+- **Automatic Extraction**: ZIP files are automatically scanned and contents listed
+- **In-Memory Processing**: Images extracted on-demand without downloading
+- **Nested ZIP Support**: Handles complex archive structures with multiple levels
+- **Smart File Management**: Context-aware download options for files inside ZIPs
+
+### 🖼️ Enhanced Image Processing
+- **Multi-Format Support**: PNG, JPG, TIFF, and other common scientific image formats
+- **Real-time Analysis**: Edge detection, color analysis, and pattern recognition
+- **Interactive Tools**: Image gallery, filters, and statistical analysis
+- **Large Dataset Optimization**: Efficient handling of datasets with thousands of images
+
 ## Features
 
 - Browse and search Zenodo datasets
@@ -18,6 +38,8 @@ A centralized, web-based platform for researchers to explore, analyze, and bench
 - AI-powered analysis and benchmarking
 - Custom experiment building
 - Automated report generation
+- **NEW**: Local AI models for offline analysis
+- **NEW**: Automatic ZIP archive extraction and browsing
 
 ## Key Features
 
@@ -25,16 +47,23 @@ A centralized, web-based platform for researchers to explore, analyze, and bench
 - Connect directly to Zenodo via API to fetch and index datasets
 - Browse, search, and filter experiments by metadata
 - Preview images/videos and download raw data
+- **NEW**: Automatic ZIP archive extraction and content browsing
+- **NEW**: Support for nested ZIP files and complex archive structures
 
 ### Interactive Analysis
 - Visualization tools for images, videos, phase diagrams, and time series
 - Rheology/physics analysis with feature extraction and statistics
 - Custom experiment builder for data analysis
+- **NEW**: Image gallery with filtering and search capabilities
+- **NEW**: Real-time edge detection and color analysis
 
 ### AI/ML Integration
 - AI agents for analysis suggestions and benchmarking
 - ML models for image/video classification and pattern recognition
 - Automated report generation and natural language queries
+- **NEW**: Local Ollama integration for offline AI analysis
+- **NEW**: OpenAI GPT integration for cloud-based AI assistance
+- **NEW**: Smart model management and automatic installation
 
 ### Collaboration & Reporting
 - Export/share analysis reports (PDF, HTML, Markdown)
@@ -43,10 +72,11 @@ A centralized, web-based platform for researchers to explore, analyze, and bench
 
 ## Tech Stack
 
-- Frontend: Streamlit
+- Frontend: Streamlit 1.40+
 - Backend: Python (FastAPI)
-- AI/ML: HuggingFace, scikit-learn, PyTorch
+- AI/ML: OpenAI GPT, Ollama (Local), HuggingFace, scikit-learn, PyTorch
 - Data Storage: Zenodo API
+- **NEW**: ZIP processing with zipfile and io libraries
 
 ## Setup
 
@@ -67,10 +97,46 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Run the application:
+4. **Optional**: Install Ollama for local AI support:
+```bash
+# macOS
+brew install ollama
+brew services start ollama
+
+# Linux
+curl -fsSL https://ollama.ai/install.sh | sh
+sudo systemctl start ollama
+
+# Windows
+# Download from https://ollama.ai/download
+```
+
+5. Run the application:
 ```bash
 streamlit run app.py
 ```
+
+## AI Assistant Setup
+
+### OpenAI GPT (Cloud-based)
+1. Get an API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Enter the key in the sidebar when using the Analysis section
+3. Start asking questions about your data!
+
+### Local Ollama (Free, Offline)
+1. Install Ollama (see setup step 4 above)
+2. The app will automatically detect available models
+3. Click "Install" to download your preferred model (e.g., llama2:7b)
+4. Start using local AI analysis - no internet required!
+
+## Example User Stories
+
+- "I want to upload a new experiment and see how its results compare to published phase diagrams."
+- "Show me all experiments with phi > 0.5 and rate < 10, and plot their instability patterns."
+- "Generate a report summarizing the main findings from the 2023 dataset."
+- "What is the most similar published experiment to this new data?"
+- **NEW**: "Extract and analyze all images from this ZIP archive of experimental data."
+- **NEW**: "What types of scientific images are in this dataset and what analysis would be useful?"
 
 ## Development
 
@@ -81,13 +147,25 @@ streamlit run app.py
   - `models/`: AI/ML models
   - `utils/`: Utility functions
   - `visualization/`: Data visualization components
+  - `analysis/`: Image analysis tools
+  - `components/`: UI components
 
-## Example User Stories
+## Recent Updates
 
-- "I want to upload a new experiment and see how its results compare to published phase diagrams."
-- "Show me all experiments with phi > 0.5 and rate < 10, and plot their instability patterns."
-- "Generate a report summarizing the main findings from the 2023 dataset."
-- "What is the most similar published experiment to this new data?"
+### v1.2.0 - AI Integration & ZIP Support
+- ✅ Added OpenAI GPT integration for cloud-based AI analysis
+- ✅ Added Ollama integration for local, offline AI analysis
+- ✅ Implemented automatic ZIP archive extraction and browsing
+- ✅ Enhanced image processing with multi-format support
+- ✅ Added smart model management and installation
+- ✅ Improved error handling and user feedback
+- ✅ Updated to Streamlit 1.40+ compatibility
+
+### v1.1.0 - Core Features
+- ✅ Basic Zenodo API integration
+- ✅ Image browsing and preview
+- ✅ Interactive analysis tools
+- ✅ Data visualization components
 
 ## Contributing
 
@@ -104,6 +182,7 @@ This section outlines the recommended development practices for maintaining a cl
 - Create descriptive branch names:
   ```bash
   git checkout -b feature/zip-extraction
+  git checkout -b feature/ai-integration
   git checkout -b fix/image-display-bug
   git checkout -b docs/update-readme
   ```
@@ -113,6 +192,7 @@ This section outlines the recommended development practices for maintaining a cl
 - Use [Conventional Commits](https://www.conventionalcommits.org/) format:
   ```bash
   git commit -m "feat: add ZIP file extraction support"
+  git commit -m "feat: integrate OpenAI and Ollama AI assistants"
   git commit -m "fix: resolve image display compatibility issues"
   git commit -m "docs: update README with new features"
   git commit -m "refactor: improve edge detection performance"
@@ -182,13 +262,3 @@ For urgent fixes that need immediate deployment:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## New in 2025: ZIP Archive Support & Streamlit 1.40+
-
-- The app now automatically extracts and displays images from ZIP files in Zenodo records. You can preview and analyze images inside ZIPs just like regular files.
-- All image display now uses the new `use_container_width` parameter, fully compatible with Streamlit 1.40+.
-- To use the latest features, ensure you have Streamlit 1.40 or newer installed in your environment.
-
-### ZIP Workflow
-- When you open a Zenodo record, any ZIP files are automatically scanned and their contents listed alongside top-level files.
-- Selecting an image from inside a ZIP will extract and display it in memory, with full support for analysis tools.
