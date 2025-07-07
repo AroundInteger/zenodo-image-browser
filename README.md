@@ -93,6 +93,92 @@ streamlit run app.py
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## Development Workflow & Best Practices
+
+This section outlines the recommended development practices for maintaining a clean, collaborative codebase.
+
+### Git & GitHub Best Practices
+
+#### Branching Strategy
+- **Never work directly on `main`** - always use feature branches
+- Create descriptive branch names:
+  ```bash
+  git checkout -b feature/zip-extraction
+  git checkout -b fix/image-display-bug
+  git checkout -b docs/update-readme
+  ```
+
+#### Commit Guidelines
+- **Commit early and often** with small, focused changes
+- Use [Conventional Commits](https://www.conventionalcommits.org/) format:
+  ```bash
+  git commit -m "feat: add ZIP file extraction support"
+  git commit -m "fix: resolve image display compatibility issues"
+  git commit -m "docs: update README with new features"
+  git commit -m "refactor: improve edge detection performance"
+  ```
+
+#### Pull Request Workflow
+1. **Create a feature branch** from `main`
+2. **Make your changes** with clear, focused commits
+3. **Create a Pull Request** with descriptive title and description
+4. **Review your own work** before requesting review
+5. **Merge only when ready** - keep `main` deployable
+
+#### Commit Message Types
+- `feat:` New features
+- `fix:` Bug fixes
+- `docs:` Documentation changes
+- `style:` Code style changes (formatting, etc.)
+- `refactor:` Code refactoring
+- `test:` Adding or updating tests
+- `chore:` Maintenance tasks
+
+### Solo Development Workflow
+Even when working alone, follow these practices:
+- Use feature branches for all changes
+- Create pull requests for significant features
+- Write clear commit messages
+- Keep `main` stable and deployable
+
+### Team Development Workflow
+When collaborating:
+- **Pull latest changes** regularly: `git pull origin main`
+- **Resolve conflicts early** to avoid merge hell
+- **Use issues and project boards** for tracking
+- **Review each other's code** before merging
+- **Communicate changes** in PR descriptions
+
+### Code Quality Guidelines
+- **Write self-documenting code** with clear variable names
+- **Add comments** for complex logic
+- **Follow PEP 8** for Python code style
+- **Test your changes** before committing
+- **Update documentation** when adding features
+
+### File Organization
+- Keep related files together in appropriate directories
+- Use descriptive file and function names
+- Maintain a clean project structure
+- Update `requirements.txt` when adding dependencies
+
+### Before Committing
+- [ ] Code runs without errors
+- [ ] All tests pass (if applicable)
+- [ ] Documentation is updated
+- [ ] Commit message follows conventions
+- [ ] No sensitive data is included
+
+### Emergency Fixes
+For urgent fixes that need immediate deployment:
+1. Create a hotfix branch: `git checkout -b hotfix/critical-bug`
+2. Make minimal, focused changes
+3. Test thoroughly
+4. Create PR and merge quickly
+5. Tag the release: `git tag v1.0.1`
+
+---
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

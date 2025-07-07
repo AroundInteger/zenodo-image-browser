@@ -154,18 +154,69 @@ class InteractiveAnalysisTools:
                         st.error(f"Could not load image: {e}")
                         st.info("You can still download the file using the button below.")
         
-        # Download button
-        if st.button("📥 Download", key=f"download_{file_name}"):
-            try:
-                response = requests.get(file_url)
-                st.download_button(
-                    "Click to download",
-                    data=response.content,
-                    file_name=file_name,
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Could not download file: {e}")
+        # Context-aware download actions
+        if from_zip:
+            # For files from ZIPs, provide two options
+            st.markdown("**📦 ZIP Actions:**")
+            
+            # Download individual file from ZIP
+            if st.button("📄 Download File", key=f"download_file_{file_name}"):
+                try:
+                    # Extract and download the individual file from ZIP
+                    parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
+                    if parent_zip:
+                        zip_url = parent_zip.get('links', {}).get('self', '')
+                        response = requests.get(zip_url)
+                        response.raise_for_status()
+                        
+                        with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                            with zf.open(zip_inner_path) as file:
+                                file_content = file.read()
+                                
+                        st.download_button(
+                            "Click to download extracted file",
+                            data=file_content,
+                            file_name=zip_inner_path.split('/')[-1],  # Just the filename, not the path
+                            key=f"dl_zip_file_{file_name}",
+                            use_container_width=True
+                        )
+                    else:
+                        st.error("Parent ZIP file not found")
+                except Exception as e:
+                    st.error(f"Could not download file from ZIP: {e}")
+            
+            # Download original ZIP
+            if st.button("📦 Download ZIP", key=f"download_zip_{file_name}"):
+                try:
+                    # Find and download the parent ZIP file
+                    parent_zip = next((f for f in dataset_info['files'] if f.get('key') == zip_source), None)
+                    if parent_zip:
+                        zip_url = parent_zip.get('links', {}).get('self', '')
+                        response = requests.get(zip_url)
+                        st.download_button(
+                            "Click to download ZIP archive",
+                            data=response.content,
+                            file_name=zip_source,
+                            key=f"dl_zip_archive_{file_name}",
+                            use_container_width=True
+                        )
+                    else:
+                        st.error("Parent ZIP file not found")
+                except Exception as e:
+                    st.error(f"Could not download ZIP: {e}")
+        else:
+            # Standard download for regular files
+            if st.button("📥 Download", key=f"download_{file_name}"):
+                try:
+                    response = requests.get(file_url)
+                    st.download_button(
+                        "Click to download",
+                        data=response.content,
+                        file_name=file_name,
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Could not download file: {e}")
     
     def image_gallery(self, dataset_info: Dict[str, Any]):
         """Interactive image gallery with filtering and sorting"""

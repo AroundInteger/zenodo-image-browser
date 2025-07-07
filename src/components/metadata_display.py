@@ -114,12 +114,19 @@ def display_dataset_metadata(dataset: Dict[Any, Any]) -> None:
                 st.dataframe(df, use_container_width=True)
 
 def display_file_preview(file_info: Dict[Any, Any]) -> None:
-    """Enhanced file preview with metadata"""
+    """Enhanced file preview with metadata and context-aware download actions"""
     file_name = file_info.get('key', '')
     file_size = file_info.get('size', 0)
     file_url = file_info.get('links', {}).get('self', '')
+    from_zip = file_info.get('from_zip', False)
+    zip_source = file_info.get('zip_source')
+    zip_inner_path = file_info.get('zip_inner_path')
     
-    st.markdown(f"#### {file_name}")
+    # Add visual indicator for ZIP files
+    if from_zip:
+        st.markdown(f"#### 📦 {file_name} *(from ZIP: {zip_source})*")
+    else:
+        st.markdown(f"#### {file_name}")
     
     col1, col2 = st.columns([3, 1])
     
@@ -129,45 +136,82 @@ def display_file_preview(file_info: Dict[Any, Any]) -> None:
         
         if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp']:
             try:
-                st.image(file_url, caption=file_name, use_container_width=True)
+                if from_zip:
+                    # For ZIP files, we need to extract and display
+                    st.info("📦 Image from ZIP archive - use Analysis tools to view")
+                else:
+                    st.image(file_url, caption=file_name, use_container_width=True)
             except Exception as e:
                 st.error(f"Could not load image: {e}")
         
         elif ext in ['txt', 'md', 'csv']:
             if st.button(f"Preview {file_name}", key=f"preview_{file_name}"):
                 try:
-                    response = requests.get(file_url)
-                    if response.status_code == 200:
-                        if ext == 'csv':
-                            # Show CSV preview
-                            import io
-                            df = pd.read_csv(io.StringIO(response.text))
-                            st.dataframe(df.head(10))
-                            st.caption(f"Showing first 10 rows of {len(df)} total rows")
-                        else:
-                            # Show text preview
-                            content = response.text[:1000]  # First 1000 chars
-                            st.text_area("File Preview", content, height=200)
-                            if len(response.text) > 1000:
-                                st.caption("Showing first 1000 characters...")
+                    if from_zip:
+                        st.info("📦 File from ZIP archive - use Analysis tools to view")
+                    else:
+                        response = requests.get(file_url)
+                        if response.status_code == 200:
+                            if ext == 'csv':
+                                # Show CSV preview
+                                import io
+                                df = pd.read_csv(io.StringIO(response.text))
+                                st.dataframe(df.head(10))
+                                st.caption(f"Showing first 10 rows of {len(df)} total rows")
+                            else:
+                                # Show text preview
+                                content = response.text[:1000]  # First 1000 chars
+                                st.text_area("File Preview", content, height=200)
+                                if len(response.text) > 1000:
+                                    st.caption("Showing first 1000 characters...")
                 except Exception as e:
                     st.error(f"Could not preview file: {e}")
         
         else:
-            st.info(f"Preview not available for .{ext} files")
+            if from_zip:
+                st.info(f"📦 {ext.upper()} file from ZIP archive")
+            else:
+                st.info(f"Preview not available for .{ext} files")
     
     with col2:
         # File metadata
         st.metric("Size", f"{file_size / (1024 * 1024):.2f} MB")
         
-        if st.button("📥 Download", key=f"download_{file_name}"):
-            try:
-                response = requests.get(file_url)
-                st.download_button(
-                    "Click to download",
-                    data=response.content,
-                    file_name=file_name,
-                    key=f"dl_btn_{file_name}"
-                )
-            except Exception as e:
-                st.error(f"Download failed: {e}")
+        # Context-aware download actions
+        if from_zip:
+            # For files from ZIPs, provide two options
+            st.markdown("**📦 ZIP Actions:**")
+            
+            # Download individual file from ZIP
+            if st.button("📄 Download File", key=f"download_file_{file_name}"):
+                try:
+                    # Find the parent ZIP file
+                    from src.api.zenodo import ZenodoAPI
+                    zenodo = ZenodoAPI()
+                    
+                    # This would need to be implemented to extract and download individual files
+                    st.info("Individual file download from ZIP coming soon!")
+                except Exception as e:
+                    st.error(f"Download failed: {e}")
+            
+            # Download original ZIP
+            if st.button("📦 Download ZIP", key=f"download_zip_{file_name}"):
+                try:
+                    # Find the parent ZIP file URL
+                    # This would need the dataset context to find the ZIP file
+                    st.info("ZIP download coming soon!")
+                except Exception as e:
+                    st.error(f"ZIP download failed: {e}")
+        else:
+            # Standard download for regular files
+            if st.button("📥 Download", key=f"download_{file_name}"):
+                try:
+                    response = requests.get(file_url)
+                    st.download_button(
+                        "Click to download",
+                        data=response.content,
+                        file_name=file_name,
+                        key=f"dl_btn_{file_name}"
+                    )
+                except Exception as e:
+                    st.error(f"Download failed: {e}")
