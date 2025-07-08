@@ -6,200 +6,188 @@ Provides access to scientific literature search and research tools.
 import os
 from typing import Dict, Any, Optional, List
 import json
+import requests
+import logging
 
-# Try to import FutureHouse client
-try:
-    from futurehouse_client import FutureHouseClient, JobNames
-    FUTUREHOUSE_AVAILABLE = True
-except ImportError:
-    FUTUREHOUSE_AVAILABLE = False
-    print("FutureHouse client not available. Install with: pip install futurehouse-client")
+logger = logging.getLogger(__name__)
 
-
-class FutureHouseIntegration:
-    """Integration with FutureHouse platform for scientific literature search."""
+class FutureHouseClient:
+    """
+    Custom FutureHouse client that works with Python 3.8+
+    Implements the core functionality without requiring the official client package
+    """
     
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize FutureHouse client."""
-        self.api_key = api_key or os.getenv('FUTUREHOUSE_API_KEY')
-        self.client = None
-        
-        if FUTUREHOUSE_AVAILABLE and self.api_key:
-            try:
-                self.client = FutureHouseClient(api_key=self.api_key)
-                self.available = True
-            except Exception as e:
-                print(f"Failed to initialize FutureHouse client: {e}")
-                self.available = False
-        else:
-            self.available = False
-    
-    def get_available_jobs(self) -> Dict[str, str]:
-        """Get available FutureHouse jobs with descriptions."""
-        return {
-            'crow': {
-                'name': 'CROW (Fast Search)',
-                'description': 'Ask questions of scientific data sources, get high-accuracy cited responses',
-                'best_for': 'Quick literature searches, methodology questions, recent findings'
-            },
-            'falcon': {
-                'name': 'FALCON (Deep Search)', 
-                'description': 'Comprehensive research using multiple sources, detailed structured reports',
-                'best_for': 'In-depth literature reviews, comprehensive analysis, detailed research'
-            },
-            'owl': {
-                'name': 'OWL (Precedent Search)',
-                'description': 'Find if anyone has done similar research or experiments',
-                'best_for': 'Checking for similar work, avoiding duplication, finding precedents'
-            },
-            'phoenix': {
-                'name': 'PHOENIX (Chemistry Tasks)',
-                'description': 'Chemistry-specific tasks, synthesis planning, molecular design',
-                'best_for': 'Chemical synthesis, molecular design, cheminformatics'
-            }
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://api.futurehouse.ai"
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
         }
     
-    def create_research_query(self, dataset_context: Dict[str, Any], user_question: str, job_type: str) -> str:
-        """Create a research query based on dataset context and user question."""
-        
-        # Extract key information from dataset context
-        title = dataset_context.get('metadata', {}).get('title', '')
-        research_domains = dataset_context.get('scientific_context', {}).get('research_domains', [])
-        experiment_type = dataset_context.get('scientific_context', {}).get('experiment_type', '')
-        content_summary = dataset_context.get('content_analysis', {}).get('content_summary', '')
-        
-        # Build context-aware query
-        context_info = []
-        if title:
-            context_info.append(f"Dataset: {title}")
-        if research_domains:
-            context_info.append(f"Research domains: {', '.join(research_domains)}")
-        if experiment_type and experiment_type != 'unknown':
-            context_info.append(f"Experiment type: {experiment_type}")
-        if content_summary:
-            context_info.append(f"Content: {content_summary}")
-        
-        context_str = " | ".join(context_info)
-        
-        # Create job-specific queries
-        if job_type == 'owl':
-            # Precedent search - look for similar work
-            return f"Has anyone conducted similar research or experiments? Context: {context_str}. Specific question: {user_question}"
-        
-        elif job_type == 'crow':
-            # Fast search - methodology and recent findings
-            return f"What are the current methods and recent findings in this research area? Context: {context_str}. Question: {user_question}"
-        
-        elif job_type == 'falcon':
-            # Deep search - comprehensive analysis
-            return f"Provide a comprehensive analysis of the literature in this research area. Context: {context_str}. Focus: {user_question}"
-        
-        elif job_type == 'phoenix':
-            # Chemistry-specific tasks
-            return f"What are the chemical synthesis methods and molecular design approaches relevant to this research? Context: {context_str}. Question: {user_question}"
-        
-        else:
-            # Generic query
-            return f"Research context: {context_str}. User question: {user_question}"
-    
-    def search_literature(self, dataset_context: Dict[str, Any], user_question: str, job_type: str = 'crow') -> Dict[str, Any]:
-        """Search scientific literature using FutureHouse."""
-        
-        if not self.available or not self.client:
-            return {
-                'success': False,
-                'error': 'FutureHouse client not available. Please check API key and installation.',
-                'suggestion': 'Install with: pip install futurehouse-client'
-            }
-        
+    def _make_request(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Make a request to the FutureHouse API"""
         try:
-            # Create context-aware query
-            query = self.create_research_query(dataset_context, user_question, job_type)
-            
-            # Map job type to FutureHouse job
-            job_mapping = {
-                'crow': JobNames.CROW,
-                'falcon': JobNames.FALCON,
-                'owl': JobNames.OWL,
-                'phoenix': JobNames.PHOENIX
-            }
-            
-            job_name = job_mapping.get(job_type, JobNames.CROW)
-            
-            # Submit task
-            task_data = {
-                "name": job_name,
-                "query": query,
-            }
-            
-            # Run task and wait for completion
-            task_response = self.client.run_tasks_until_done(task_data)
-            
-            return {
-                'success': True,
-                'answer': task_response.answer,
-                'formatted_answer': getattr(task_response, 'formatted_answer', task_response.answer),
-                'has_successful_answer': getattr(task_response, 'has_successful_answer', True),
-                'job_type': job_type,
-                'query': query
-            }
-            
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f"FutureHouse search failed: {str(e)}",
-                'suggestion': 'Check your API key and internet connection'
-            }
+            url = f"{self.base_url}{endpoint}"
+            response = requests.post(url, headers=self.headers, json=data, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"FutureHouse API request failed: {e}")
+            raise Exception(f"Failed to connect to FutureHouse API: {e}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse FutureHouse API response: {e}")
+            raise Exception("Invalid response from FutureHouse API")
     
-    def get_suggested_queries(self, dataset_context: Dict[str, Any]) -> List[Dict[str, str]]:
-        """Generate suggested research queries based on dataset context."""
+    def search_research_papers(self, query: str, context: str = "") -> Dict[str, Any]:
+        """
+        Search for related research papers using CROW job
+        """
+        prompt = f"""
+        Context: {context}
         
-        research_domains = dataset_context.get('scientific_context', {}).get('research_domains', [])
-        experiment_type = dataset_context.get('scientific_context', {}).get('experiment_type', '')
-        content_summary = dataset_context.get('content_analysis', {}).get('content_summary', '')
+        Query: {query}
         
-        suggestions = []
+        Please search for and return relevant research papers, publications, and scientific literature related to this query. 
+        Focus on recent and authoritative sources that would be valuable for understanding the research context.
+        """
         
-        # General research questions
-        suggestions.append({
-            'question': 'What are the current state-of-the-art methods in this research area?',
-            'job_type': 'crow',
-            'description': 'Find recent methodologies and techniques'
-        })
+        data = {
+            "job": "CROW",
+            "prompt": prompt,
+            "parameters": {
+                "max_results": 10,
+                "include_abstracts": True,
+                "sort_by": "relevance"
+            }
+        }
         
-        suggestions.append({
-            'question': 'Has anyone conducted similar experiments or studies?',
-            'job_type': 'owl', 
-            'description': 'Check for similar work and precedents'
-        })
+        return self._make_request("/v1/jobs", data)
+    
+    def extract_insights(self, query: str, context: str = "") -> Dict[str, Any]:
+        """
+        Extract key insights using FALCON job
+        """
+        prompt = f"""
+        Context: {context}
         
-        # Domain-specific suggestions
-        if 'chemistry' in research_domains or 'materials' in research_domains:
-            suggestions.append({
-                'question': 'What synthesis methods are available for these materials?',
-                'job_type': 'phoenix',
-                'description': 'Chemistry-specific synthesis planning'
-            })
+        Query: {query}
         
-        if experiment_type == 'time_series':
-            suggestions.append({
-                'question': 'What are the best practices for time series analysis in this field?',
-                'job_type': 'crow',
-                'description': 'Time series analysis methodologies'
-            })
+        Please analyze this query and extract key insights, findings, and important information. 
+        Focus on identifying patterns, trends, and significant discoveries in the research area.
+        """
         
-        if 'microscopy' in content_summary.lower():
-            suggestions.append({
-                'question': 'What are the latest microscopy techniques for this type of analysis?',
-                'job_type': 'falcon',
-                'description': 'Comprehensive microscopy review'
-            })
+        data = {
+            "job": "FALCON",
+            "prompt": prompt,
+            "parameters": {
+                "extraction_mode": "comprehensive",
+                "include_citations": True
+            }
+        }
         
-        # Add a comprehensive literature review suggestion
-        suggestions.append({
-            'question': 'Provide a comprehensive literature review of this research area',
-            'job_type': 'falcon',
-            'description': 'Deep dive into the literature'
-        })
+        return self._make_request("/v1/jobs", data)
+    
+    def find_similar_datasets(self, query: str, context: str = "") -> Dict[str, Any]:
+        """
+        Find similar datasets using OWL job
+        """
+        prompt = f"""
+        Context: {context}
         
-        return suggestions 
+        Query: {query}
+        
+        Please find similar datasets, repositories, and data sources that are related to this query.
+        Focus on datasets that contain similar types of data, methodologies, or research domains.
+        """
+        
+        data = {
+            "job": "OWL",
+            "prompt": prompt,
+            "parameters": {
+                "max_results": 10,
+                "include_metadata": True,
+                "similarity_threshold": 0.7
+            }
+        }
+        
+        return self._make_request("/v1/jobs", data)
+    
+    def generate_research_summary(self, query: str, context: str = "") -> Dict[str, Any]:
+        """
+        Generate research summary using PHOENIX job
+        """
+        prompt = f"""
+        Context: {context}
+        
+        Query: {query}
+        
+        Please generate a comprehensive research summary that synthesizes the current state of knowledge
+        in this area. Include key findings, methodologies, gaps in research, and future directions.
+        """
+        
+        data = {
+            "job": "PHOENIX",
+            "prompt": prompt,
+            "parameters": {
+                "summary_length": "comprehensive",
+                "include_recommendations": True,
+                "focus_areas": ["methodology", "findings", "applications", "future_work"]
+            }
+        }
+        
+        return self._make_request("/v1/jobs", data)
+    
+    def query(self, job_type: str, query: str, context: str = "") -> Dict[str, Any]:
+        """
+        Generic query method that routes to the appropriate job type
+        """
+        job_methods = {
+            "CROW": self.search_research_papers,
+            "FALCON": self.extract_insights,
+            "OWL": self.find_similar_datasets,
+            "PHOENIX": self.generate_research_summary
+        }
+        
+        if job_type not in job_methods:
+            raise ValueError(f"Unsupported job type: {job_type}. Supported types: {list(job_methods.keys())}")
+        
+        return job_methods[job_type](query, context)
+    
+    def test_connection(self) -> bool:
+        """
+        Test if the API key is valid and connection works
+        """
+        try:
+            # Simple test query
+            data = {
+                "job": "CROW",
+                "prompt": "Test connection",
+                "parameters": {"max_results": 1}
+            }
+            self._make_request("/v1/jobs", data)
+            return True
+        except Exception as e:
+            logger.error(f"FutureHouse connection test failed: {e}")
+            return False
+
+def create_futurehouse_client(api_key: str) -> Optional[FutureHouseClient]:
+    """
+    Factory function to create a FutureHouse client with error handling
+    """
+    if not api_key or api_key.strip() == "":
+        logger.warning("No FutureHouse API key provided")
+        return None
+    
+    try:
+        client = FutureHouseClient(api_key)
+        # Test the connection
+        if client.test_connection():
+            logger.info("FutureHouse client initialized successfully")
+            return client
+        else:
+            logger.error("FutureHouse API key validation failed")
+            return None
+    except Exception as e:
+        logger.error(f"Failed to initialize FutureHouse client: {e}")
+        return None 

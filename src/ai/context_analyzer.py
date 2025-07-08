@@ -81,14 +81,26 @@ class DatasetContextAnalyzer:
         file_types = Counter()
         file_sizes = []
         directories = set()
+        accessible_files = []
         
         for file in files:
             filename = file.get('key', '')
             size = file.get('size', 0)
             file_type = file.get('type', 'unknown')
+            download_url = file.get('links', {}).get('self', '')
             
             file_types[file_type] += 1
             file_sizes.append(size)
+            
+            # Track accessible files (those with download URLs)
+            if download_url:
+                accessible_files.append({
+                    'name': filename,
+                    'type': file_type,
+                    'size_mb': size / (1024 * 1024),
+                    'download_url': download_url,
+                    'from_zip': file.get('from_zip', False)
+                })
             
             # Extract directory structure
             if '/' in filename:
@@ -97,6 +109,7 @@ class DatasetContextAnalyzer:
         
         return {
             'total_files': len(files),
+            'accessible_files': len(accessible_files),
             'file_type_distribution': dict(file_types),
             'size_statistics': {
                 'total_size_mb': sum(file_sizes) / (1024 * 1024),
@@ -105,7 +118,8 @@ class DatasetContextAnalyzer:
             },
             'directory_structure': list(directories),
             'has_zip_files': any(f.get('from_zip', False) for f in files),
-            'zip_extracted_files': len([f for f in files if f.get('from_zip', False)])
+            'zip_extracted_files': len([f for f in files if f.get('from_zip', False)]),
+            'sample_accessible_files': accessible_files[:10]  # Show first 10 accessible files
         }
     
     def _analyze_content(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
@@ -114,11 +128,13 @@ class DatasetContextAnalyzer:
         
         image_analysis = self._analyze_images(files)
         data_analysis = self._analyze_data_files(files)
+        analysis_capabilities = self._analyze_analysis_capabilities(files)
         
         return {
             'images': image_analysis,
             'data_files': data_analysis,
-            'content_summary': self._generate_content_summary(image_analysis, data_analysis)
+            'analysis_capabilities': analysis_capabilities,
+            'content_summary': self._generate_content_summary(image_analysis, data_analysis, analysis_capabilities)
         }
     
     def _analyze_images(self, files: List[Dict]) -> Dict[str, Any]:
@@ -173,6 +189,54 @@ class DatasetContextAnalyzer:
             'experiment_patterns': dict(experiment_patterns),
             'sample_filenames': [f.get('key', '') for f in data_files[:5]]
         }
+    
+    def _analyze_analysis_capabilities(self, files: List[Dict]) -> Dict[str, Any]:
+        """Analyze what analysis capabilities are available for the files."""
+        capabilities = {
+            'image_gallery': False,
+            'image_analysis': False,
+            'data_explorer': False,
+            'time_series_analysis': False,
+            'statistical_analysis': False,
+            'pattern_detection': False,
+            'file_preview': False
+        }
+        
+        image_files = [f for f in files if f.get('type') == 'images']
+        data_files = [f for f in files if f.get('type') == 'data']
+        
+        # Image analysis capabilities
+        if image_files:
+            capabilities['image_gallery'] = True
+            capabilities['image_analysis'] = True
+            capabilities['file_preview'] = True
+            
+            # Check for specific image types that support advanced analysis
+            image_extensions = [f.get('key', '').split('.')[-1].lower() for f in image_files if '.' in f.get('key', '')]
+            supported_formats = ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'gif']
+            
+            if any(ext in supported_formats for ext in image_extensions):
+                capabilities['pattern_detection'] = True
+        
+        # Data analysis capabilities
+        if data_files:
+            capabilities['data_explorer'] = True
+            capabilities['statistical_analysis'] = True
+            capabilities['file_preview'] = True
+            
+            # Check for time series data
+            time_series_indicators = ['time', 'hour', 'day', 'week', 'month', 'year', 'sequence', 'series']
+            filenames = [f.get('key', '').lower() for f in data_files]
+            if any(indicator in ' '.join(filenames) for indicator in time_series_indicators):
+                capabilities['time_series_analysis'] = True
+        
+        # Check for CSV files specifically
+        csv_files = [f for f in data_files if f.get('key', '').lower().endswith('.csv')]
+        if csv_files:
+            capabilities['data_explorer'] = True
+            capabilities['statistical_analysis'] = True
+        
+        return capabilities
     
     def _analyze_scientific_context(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze scientific context and research domain."""
@@ -276,7 +340,7 @@ class DatasetContextAnalyzer:
         else:
             return 'low'
     
-    def _generate_content_summary(self, image_analysis: Dict, data_analysis: Dict) -> str:
+    def _generate_content_summary(self, image_analysis: Dict, data_analysis: Dict, analysis_capabilities: Dict) -> str:
         """Generate a human-readable content summary."""
         summary_parts = []
         
@@ -292,6 +356,9 @@ class DatasetContextAnalyzer:
                 formats = list(data_analysis['data_formats'].keys())
                 summary_parts.append(f"in {', '.join(formats[:3])} format")
         
+        if analysis_capabilities:
+            summary_parts.append(f"Analysis capabilities: {', '.join(analysis_capabilities.keys())}")
+        
         return '; '.join(summary_parts) if summary_parts else "No content analysis available"
     
     def _generate_summary(self, dataset: Dict[str, Any]) -> str:
@@ -300,6 +367,21 @@ class DatasetContextAnalyzer:
         file_structure = self._analyze_file_structure(dataset)
         content = self._analyze_content(dataset)
         scientific = self._analyze_scientific_context(dataset)
+        
+        # Get available analysis tools
+        available_tools = []
+        if content['analysis_capabilities']['image_gallery']:
+            available_tools.append("Image Gallery")
+        if content['analysis_capabilities']['image_analysis']:
+            available_tools.append("Image Analysis")
+        if content['analysis_capabilities']['data_explorer']:
+            available_tools.append("Data Explorer")
+        if content['analysis_capabilities']['time_series_analysis']:
+            available_tools.append("Time Series Analysis")
+        if content['analysis_capabilities']['statistical_analysis']:
+            available_tools.append("Statistical Analysis")
+        if content['analysis_capabilities']['pattern_detection']:
+            available_tools.append("Pattern Detection")
         
         summary = f"""
 DATASET CONTEXT SUMMARY:
@@ -311,6 +393,7 @@ Research Domains: {', '.join(scientific['research_domains'])}
 
 Dataset Structure:
 - Total Files: {file_structure['total_files']}
+- Accessible Files: {file_structure['accessible_files']} (with download URLs)
 - File Types: {', '.join([f"{k}: {v}" for k, v in file_structure['file_type_distribution'].items()])}
 - Total Size: {file_structure['size_statistics']['total_size_mb']:.1f} MB
 - ZIP Files Extracted: {file_structure['zip_extracted_files']} files
@@ -320,10 +403,16 @@ Content Analysis:
 - Experiment Type: {scientific['experiment_type']}
 - Data Complexity: {scientific['data_complexity']}
 
+Available Analysis Tools:
+- {', '.join(available_tools) if available_tools else 'No analysis tools available'}
+
 Key Features:
 - Image Categories: {', '.join(content['images']['image_categories'].keys()) if content['images']['image_categories'] else 'None detected'}
 - Data Formats: {', '.join(content['data_files']['data_formats'].keys()) if content['data_files']['data_formats'] else 'None detected'}
 - Experiment Patterns: {', '.join(content['data_files']['experiment_patterns'].keys()) if content['data_files']['experiment_patterns'] else 'None detected'}
+
+Sample Accessible Files:
+{chr(10).join([f"- {f['name']} ({f['type']}, {f['size_mb']:.1f}MB)" for f in file_structure['sample_accessible_files'][:5]]) if file_structure['sample_accessible_files'] else '- No accessible files found'}
         """.strip()
         
         return summary
@@ -332,20 +421,47 @@ Key Features:
         """Create a comprehensive context prompt for AI Assistant."""
         context = self.analyze_dataset_context(dataset)
         
+        # Get available analysis tools
+        available_tools = []
+        if context['content_analysis']['analysis_capabilities']['image_gallery']:
+            available_tools.append("Image Gallery - Browse and filter images")
+        if context['content_analysis']['analysis_capabilities']['image_analysis']:
+            available_tools.append("Image Analysis - Measurements, filters, pattern detection")
+        if context['content_analysis']['analysis_capabilities']['data_explorer']:
+            available_tools.append("Data Explorer - Interactive data visualization")
+        if context['content_analysis']['analysis_capabilities']['time_series_analysis']:
+            available_tools.append("Time Series Analysis - Temporal data analysis")
+        if context['content_analysis']['analysis_capabilities']['statistical_analysis']:
+            available_tools.append("Statistical Analysis - Comprehensive statistics")
+        if context['content_analysis']['analysis_capabilities']['pattern_detection']:
+            available_tools.append("Pattern Detection - Advanced image pattern analysis")
+        
+        tools_text = '\n- '.join(available_tools) if available_tools else 'No analysis tools available'
+        
         prompt = f"""
 You are a scientific data assistant with expertise in analyzing research datasets. 
 
 {context['summary']}
 
+AVAILABLE ANALYSIS TOOLS:
+- {tools_text}
+
 The user is asking: "{user_question}"
 
 Based on the dataset context above, provide a helpful, accurate response. Consider:
-1. The research domain and experimental context
-2. The file structure and organization
-3. The types of data and images available
-4. Any patterns in naming conventions or experimental design
 
-Be specific about what can be analyzed with the available data and suggest relevant analysis approaches.
+1. **File Accessibility**: {context['file_structure']['accessible_files']} out of {context['file_structure']['total_files']} files are accessible for analysis
+2. **Available Tools**: The user can use the following analysis tools: {tools_text}
+3. **Research Context**: The dataset is in the {', '.join(context['scientific_context']['research_domains'])} domain(s)
+4. **Data Types**: {context['content_analysis']['content_summary']}
+
+IMPORTANT: Be specific about:
+- Which analysis tools are available for this dataset
+- What types of analysis can be performed
+- How to access and use the available files
+- What insights can be gained from the data
+
+If the user asks about analyzing images or data, direct them to the appropriate analysis tools in the app.
         """.strip()
         
         return prompt 

@@ -44,7 +44,7 @@ except ImportError:
 
 # Import FutureHouse integration
 try:
-    from src.ai.futurehouse_client import FutureHouseIntegration
+    from src.ai.futurehouse_client import create_futurehouse_client
     FUTUREHOUSE_AVAILABLE = True
 except ImportError:
     FUTUREHOUSE_AVAILABLE = False
@@ -408,15 +408,36 @@ elif page == "Analysis":
                 
                 if api_key:
                     # Initialize FutureHouse client
-                    futurehouse = FutureHouseIntegration(api_key=api_key)
+                    futurehouse_client = create_futurehouse_client(api_key)
                     
-                    if not futurehouse.available:
+                    if not futurehouse_client:
                         st.error("Failed to initialize FutureHouse client. Please check your API key.")
                     else:
                         st.success("✅ FutureHouse Research Assistant ready!")
                         
-                        # Show available jobs
-                        jobs = futurehouse.get_available_jobs()
+                        # Define available jobs
+                        jobs = {
+                            'CROW': {
+                                'name': 'CROW (Fast Search)',
+                                'description': 'Ask questions of scientific data sources, get high-accuracy cited responses',
+                                'best_for': 'Quick literature searches, methodology questions, recent findings'
+                            },
+                            'FALCON': {
+                                'name': 'FALCON (Deep Search)', 
+                                'description': 'Comprehensive research using multiple sources, detailed structured reports',
+                                'best_for': 'In-depth literature reviews, comprehensive analysis, detailed research'
+                            },
+                            'OWL': {
+                                'name': 'OWL (Precedent Search)',
+                                'description': 'Find if anyone has done similar research or experiments',
+                                'best_for': 'Checking for similar work, avoiding duplication, finding precedents'
+                            },
+                            'PHOENIX': {
+                                'name': 'PHOENIX (Chemistry Tasks)',
+                                'description': 'Chemistry-specific tasks, synthesis planning, molecular design',
+                                'best_for': 'Chemical synthesis, molecular design, cheminformatics'
+                            }
+                        }
                         
                         # Job selection
                         st.subheader("🔍 Research Search Options")
@@ -438,7 +459,55 @@ elif page == "Analysis":
                             st.subheader("💡 Suggested Research Questions")
                             context_analyzer = DatasetContextAnalyzer()
                             context = context_analyzer.analyze_dataset_context(st.session_state.current_dataset)
-                            suggestions = futurehouse.get_suggested_queries(context)
+                            # Generate suggested queries based on dataset context
+                            suggestions = []
+                            
+                            # Extract context information
+                            research_domains = context.get('scientific_context', {}).get('research_domains', [])
+                            experiment_type = context.get('scientific_context', {}).get('experiment_type', '')
+                            content_summary = context.get('content_analysis', {}).get('content_summary', '')
+                            
+                            # General research questions
+                            suggestions.append({
+                                'question': 'What are the current state-of-the-art methods in this research area?',
+                                'job_type': 'CROW',
+                                'description': 'Find recent methodologies and techniques'
+                            })
+                            
+                            suggestions.append({
+                                'question': 'Has anyone conducted similar experiments or studies?',
+                                'job_type': 'OWL', 
+                                'description': 'Check for similar work and precedents'
+                            })
+                            
+                            # Domain-specific suggestions
+                            if 'chemistry' in research_domains or 'materials' in research_domains:
+                                suggestions.append({
+                                    'question': 'What synthesis methods are available for these materials?',
+                                    'job_type': 'PHOENIX',
+                                    'description': 'Chemistry-specific synthesis planning'
+                                })
+                            
+                            if experiment_type == 'time_series':
+                                suggestions.append({
+                                    'question': 'What are the best practices for time series analysis in this field?',
+                                    'job_type': 'CROW',
+                                    'description': 'Time series analysis methodologies'
+                                })
+                            
+                            if 'microscopy' in content_summary.lower():
+                                suggestions.append({
+                                    'question': 'What are the latest microscopy techniques for this type of analysis?',
+                                    'job_type': 'FALCON',
+                                    'description': 'Comprehensive microscopy review'
+                                })
+                            
+                            # Add a comprehensive literature review suggestion
+                            suggestions.append({
+                                'question': 'Provide a comprehensive literature review of this research area',
+                                'job_type': 'FALCON',
+                                'description': 'Deep dive into the literature'
+                            })
                             
                             for i, suggestion in enumerate(suggestions[:3]):  # Show top 3 suggestions
                                 if st.button(f"Ask: {suggestion['question']}", key=f"suggest_{i}"):
@@ -463,7 +532,38 @@ elif page == "Analysis":
                                         context = {'metadata': {'title': 'Unknown Dataset'}}
                                     
                                     # Perform search
-                                    result = futurehouse.search_literature(context, user_input, job_id)
+                                    # Perform FutureHouse search
+                                    try:
+                                        # Create context string
+                                        context_str = f"Dataset: {context.get('metadata', {}).get('title', '')} | "
+                                        context_str += f"Research domains: {', '.join(context.get('scientific_context', {}).get('research_domains', []))} | "
+                                        context_str += f"Content: {context.get('content_analysis', {}).get('content_summary', '')}"
+                                        
+                                        # Query FutureHouse
+                                        api_result = futurehouse_client.query(job_id, user_input, context_str)
+                                        
+                                        # Format the response
+                                        if api_result and 'answer' in api_result:
+                                            result = {
+                                                'success': True,
+                                                'answer': api_result.get('answer', ''),
+                                                'formatted_answer': api_result.get('formatted_answer', api_result.get('answer', '')),
+                                                'has_successful_answer': True,
+                                                'job_type': job_id,
+                                                'query': user_input
+                                            }
+                                        else:
+                                            result = {
+                                                'success': False,
+                                                'error': 'No response from FutureHouse API',
+                                                'suggestion': 'Please try a different query or check your API key'
+                                            }
+                                    except Exception as e:
+                                        result = {
+                                            'success': False,
+                                            'error': f"FutureHouse search failed: {str(e)}",
+                                            'suggestion': 'Check your API key and internet connection'
+                                        }
                                     
                                     if result['success']:
                                         st.success("✅ Research completed!")
@@ -494,7 +594,7 @@ elif page == "Analysis":
                     1. Visit [FutureHouse Platform](https://futurehouse.ai)
                     2. Sign up for an account
                     3. Get your API key from the dashboard
-                    4. Install the client: `pip install futurehouse-client`
+                    4. The client is already included in this app
                     """)
     else:
         st.info("Please load a dataset first to access analysis tools.")
