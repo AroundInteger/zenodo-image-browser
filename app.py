@@ -42,6 +42,14 @@ except ImportError:
     CONTEXT_ANALYZER_AVAILABLE = False
     print("Context analyzer not available. AI Assistant will use basic context.")
 
+# Import FutureHouse integration
+try:
+    from src.ai.futurehouse_client import FutureHouseIntegration
+    FUTUREHOUSE_AVAILABLE = True
+except ImportError:
+    FUTUREHOUSE_AVAILABLE = False
+    print("FutureHouse integration not available. Install with: pip install futurehouse-client")
+
 # Set page config
 st.set_page_config(
     page_title="Zenodo Image Browser",
@@ -276,9 +284,9 @@ elif page == "Analysis":
                             st.write(f"- {category}: {count} files")
         
         # Check if any AI providers are available
-        if not OPENAI_AVAILABLE and not OLLAMA_AVAILABLE:
+        if not OPENAI_AVAILABLE and not OLLAMA_AVAILABLE and not FUTUREHOUSE_AVAILABLE:
             st.warning("⚠️ No AI modules available. AI Assistant is disabled.")
-            st.info("To enable AI Assistant, install: `pip install openai` or `pip install ollama`")
+            st.info("To enable AI Assistant, install: `pip install openai` or `pip install ollama` or `pip install futurehouse-client`")
         else:
             # AI Provider Selection
             ai_providers = []
@@ -286,6 +294,8 @@ elif page == "Analysis":
                 ai_providers.append("OpenAI GPT")
             if OLLAMA_AVAILABLE:
                 ai_providers.append("Local Ollama")
+            if FUTUREHOUSE_AVAILABLE:
+                ai_providers.append("FutureHouse Research")
             
             selected_provider = st.selectbox(
                 "Choose AI Provider:", 
@@ -391,6 +401,101 @@ elif page == "Analysis":
                         except Exception as e:
                             st.error(f"Ollama error: {e}")
                             st.info("Make sure Ollama is running and the model is installed.")
+            
+            # FutureHouse Configuration
+            elif selected_provider == "FutureHouse Research" and FUTUREHOUSE_AVAILABLE:
+                api_key = st.sidebar.text_input("FutureHouse API Key", type="password", help="For FutureHouse Research Assistant")
+                
+                if api_key:
+                    # Initialize FutureHouse client
+                    futurehouse = FutureHouseIntegration(api_key=api_key)
+                    
+                    if not futurehouse.available:
+                        st.error("Failed to initialize FutureHouse client. Please check your API key.")
+                    else:
+                        st.success("✅ FutureHouse Research Assistant ready!")
+                        
+                        # Show available jobs
+                        jobs = futurehouse.get_available_jobs()
+                        
+                        # Job selection
+                        st.subheader("🔍 Research Search Options")
+                        job_options = {job['name']: job_id for job_id, job in jobs.items()}
+                        selected_job = st.selectbox(
+                            "Choose Research Tool:",
+                            list(job_options.keys()),
+                            help="Select the type of research search you want to perform"
+                        )
+                        
+                        # Show job description
+                        job_id = job_options[selected_job]
+                        job_info = jobs[job_id]
+                        st.info(f"**{job_info['name']}**: {job_info['description']}")
+                        st.write(f"**Best for**: {job_info['best_for']}")
+                        
+                        # Show suggested queries if context analyzer is available
+                        if CONTEXT_ANALYZER_AVAILABLE and 'current_dataset' in st.session_state:
+                            st.subheader("💡 Suggested Research Questions")
+                            context_analyzer = DatasetContextAnalyzer()
+                            context = context_analyzer.analyze_dataset_context(st.session_state.current_dataset)
+                            suggestions = futurehouse.get_suggested_queries(context)
+                            
+                            for i, suggestion in enumerate(suggestions[:3]):  # Show top 3 suggestions
+                                if st.button(f"Ask: {suggestion['question']}", key=f"suggest_{i}"):
+                                    st.session_state.futurehouse_question = suggestion['question']
+                                    st.session_state.futurehouse_job = suggestion['job_type']
+                        
+                        # User input
+                        user_input = st.text_input(
+                            "Ask a research question:",
+                            value=st.session_state.get('futurehouse_question', ''),
+                            help="Ask about related research, methodologies, or literature in your field"
+                        )
+                        
+                        if st.button("Search Literature") and user_input:
+                            with st.spinner(f"Searching scientific literature with {selected_job}..."):
+                                try:
+                                    # Get dataset context
+                                    if CONTEXT_ANALYZER_AVAILABLE:
+                                        context_analyzer = DatasetContextAnalyzer()
+                                        context = context_analyzer.analyze_dataset_context(st.session_state.current_dataset)
+                                    else:
+                                        context = {'metadata': {'title': 'Unknown Dataset'}}
+                                    
+                                    # Perform search
+                                    result = futurehouse.search_literature(context, user_input, job_id)
+                                    
+                                    if result['success']:
+                                        st.success("✅ Research completed!")
+                                        
+                                        # Display results
+                                        st.subheader("📚 Research Results")
+                                        st.markdown(result['answer'])
+                                        
+                                        # Show query used
+                                        with st.expander("🔍 Search Query Used"):
+                                            st.code(result['query'])
+                                        
+                                        # Show job type info
+                                        st.info(f"Search performed using: {job_info['name']}")
+                                        
+                                    else:
+                                        st.error(f"❌ Research failed: {result['error']}")
+                                        if 'suggestion' in result:
+                                            st.info(f"💡 {result['suggestion']}")
+                                            
+                                except Exception as e:
+                                    st.error(f"FutureHouse search error: {e}")
+                                    st.info("Please check your API key and internet connection.")
+                else:
+                    st.info("Please enter your FutureHouse API key in the sidebar to use the Research Assistant.")
+                    st.markdown("""
+                    **Get FutureHouse API Key:**
+                    1. Visit [FutureHouse Platform](https://futurehouse.ai)
+                    2. Sign up for an account
+                    3. Get your API key from the dashboard
+                    4. Install the client: `pip install futurehouse-client`
+                    """)
     else:
         st.info("Please load a dataset first to access analysis tools.")
         st.markdown("""
