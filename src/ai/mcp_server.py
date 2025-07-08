@@ -118,7 +118,7 @@ class DataAnalysisMCPServer:
                 name=tool_data["name"],
                 description=tool_data["description"],
                 inputSchema=tool_data["inputSchema"]
-            ))
+        ))
         
         tools.append(MCPTool(
             name="create_visualization",
@@ -639,8 +639,8 @@ class DataAnalysisMCPServer:
                 "similarity_score": 0.78,
                 "key_differences": ["mean_value", "distribution_shape"],
                 "statistical_significance": 0.05
+                }
             }
-        }
         
         return {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
     
