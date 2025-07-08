@@ -34,6 +34,14 @@ except ImportError:
     OLLAMA_AVAILABLE = False
     print("Ollama module not available. Local AI Assistant will be disabled.")
 
+# Import context analyzer
+try:
+    from src.ai.context_analyzer import DatasetContextAnalyzer
+    CONTEXT_ANALYZER_AVAILABLE = True
+except ImportError:
+    CONTEXT_ANALYZER_AVAILABLE = False
+    print("Context analyzer not available. AI Assistant will use basic context.")
+
 # Set page config
 st.set_page_config(
     page_title="Zenodo Image Browser",
@@ -238,6 +246,35 @@ elif page == "Analysis":
         st.markdown("---")
         st.subheader("🤖 AI Assistant")
         
+        # Show dataset context if available
+        if CONTEXT_ANALYZER_AVAILABLE and 'current_dataset' in st.session_state:
+            with st.expander("📊 Dataset Context (What the AI knows about your data)"):
+                context_analyzer = DatasetContextAnalyzer()
+                context = context_analyzer.analyze_dataset_context(st.session_state.current_dataset)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Metadata:**")
+                    st.write(f"Title: {context['metadata']['title']}")
+                    st.write(f"Authors: {', '.join(context['metadata']['authors'][:3])}")
+                    st.write(f"Research Domains: {', '.join(context['scientific_context']['research_domains'])}")
+                    
+                    st.write("**File Structure:**")
+                    st.write(f"Total Files: {context['file_structure']['total_files']}")
+                    st.write(f"Total Size: {context['file_structure']['size_statistics']['total_size_mb']:.1f} MB")
+                    st.write(f"ZIP Extracted: {context['file_structure']['zip_extracted_files']} files")
+                
+                with col2:
+                    st.write("**Content Analysis:**")
+                    st.write(context['content_analysis']['content_summary'])
+                    st.write(f"Experiment Type: {context['scientific_context']['experiment_type']}")
+                    st.write(f"Data Complexity: {context['scientific_context']['data_complexity']}")
+                    
+                    if context['content_analysis']['images']['image_categories']:
+                        st.write("**Image Categories:**")
+                        for category, count in context['content_analysis']['images']['image_categories'].items():
+                            st.write(f"- {category}: {count} files")
+        
         # Check if any AI providers are available
         if not OPENAI_AVAILABLE and not OLLAMA_AVAILABLE:
             st.warning("⚠️ No AI modules available. AI Assistant is disabled.")
@@ -262,12 +299,19 @@ elif page == "Analysis":
                 if api_key:
                     user_input = st.text_input("Ask me anything about your data:")
                     if st.button("Ask OpenAI") and user_input:
-                        # Prepare context: file names/types summary
+                        # Prepare enhanced context using context analyzer
                         dataset = st.session_state.current_dataset
-                        files = dataset.get('files', [])
-                        file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
-                        context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
-                        prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
+                        
+                        if CONTEXT_ANALYZER_AVAILABLE:
+                            context_analyzer = DatasetContextAnalyzer()
+                            prompt = context_analyzer.create_ai_prompt_context(dataset, user_input)
+                        else:
+                            # Fallback to basic context
+                            files = dataset.get('files', [])
+                            file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
+                            context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
+                            prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
+                        
                         with st.spinner("OpenAI is thinking..."):
                             try:
                                 client = openai.OpenAI(api_key=api_key)
@@ -328,12 +372,18 @@ elif page == "Analysis":
                 # Chat interface for Ollama
                 user_input = st.text_input("Ask me anything about your data:")
                 if st.button("Ask Local AI") and user_input:
-                    # Prepare context: file names/types summary
+                    # Prepare enhanced context using context analyzer
                     dataset = st.session_state.current_dataset
-                    files = dataset.get('files', [])
-                    file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
-                    context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
-                    prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
+                    
+                    if CONTEXT_ANALYZER_AVAILABLE:
+                        context_analyzer = DatasetContextAnalyzer()
+                        prompt = context_analyzer.create_ai_prompt_context(dataset, user_input)
+                    else:
+                        # Fallback to basic context
+                        files = dataset.get('files', [])
+                        file_summaries = [f"{f.get('key', '')} ({f.get('type', f.get('from_zip', ''))})" for f in files[:10]]
+                        context = f"Dataset contains {len(files)} files. Example files: " + ", ".join(file_summaries)
+                        prompt = f"You are a scientific data assistant. {context}\nUser question: {user_input}"
                     with st.spinner("Local AI is thinking..."):
                         try:
                             response = ollama.chat(model=selected_model, messages=[{"role": "user", "content": prompt}])
